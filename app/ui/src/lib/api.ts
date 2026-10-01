@@ -448,4 +448,22 @@ export const api = {
     }
     return tauriInvoke<void>("file_write", { path, content });
   },
+
+  // ── Crash recovery (autosaved drafts outside the project) ──────────────────
+  async recoverySave(path: string, content: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("recovery_save", { path, content });
+  },
+  async recoveryScan(): Promise<{ path: string; savedAt: number }[]> {
+    if (!isTauri()) return [];
+    return tauriInvoke<{ path: string; savedAt: number }[]>("recovery_scan");
+  },
+  async recoveryRead(path: string): Promise<string> {
+    if (!isTauri()) return "";
+    return tauriInvoke<string>("recovery_read", { path });
+  },
+  async recoveryDiscard(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("recovery_discard", { path });
+  },
 };

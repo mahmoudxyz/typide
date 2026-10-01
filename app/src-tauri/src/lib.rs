@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 // ── Background jobs: progress + cancellation (ARCHITECTURE.md §10.7, P7) ──────
 
@@ -67,7 +67,12 @@ impl typide_packages::ProgressSink for EventProgress {
     fn step(&self, done: usize, total: usize, message: &str) {
         let _ = self.app.emit(
             "job://progress",
-            JobProgress { job: self.job, done, total, message: message.to_string() },
+            JobProgress {
+                job: self.job,
+                done,
+                total,
+                message: message.to_string(),
+            },
         );
     }
     fn cancelled(&self) -> bool {
@@ -154,10 +159,21 @@ async fn vcs_sync(
     let root_path = PathBuf::from(&root);
     let reg = jobs.inner().clone();
     let (job, _cancel) = reg.start();
-    let _ = app.emit("job://started", JobStarted { job, title: "Sync with remote".into() });
+    let _ = app.emit(
+        "job://started",
+        JobStarted {
+            job,
+            title: "Sync with remote".into(),
+        },
+    );
     let _ = app.emit(
         "job://progress",
-        JobProgress { job, done: 0, total: 1, message: "fetch · merge · push".into() },
+        JobProgress {
+            job,
+            done: 0,
+            total: 1,
+            message: "fetch · merge · push".into(),
+        },
     );
 
     let res = tauri::async_runtime::spawn_blocking(move || typide_vcs::sync(&root_path))
@@ -203,10 +219,21 @@ async fn toolchain_install(
 ) -> IpcResult<typide_toolchain::Toolchain> {
     let reg = jobs.inner().clone();
     let (job, cancel) = reg.start();
-    let _ = app.emit("job://started", JobStarted { job, title: format!("Install Typst {version}") });
+    let _ = app.emit(
+        "job://started",
+        JobStarted {
+            job,
+            title: format!("Install Typst {version}"),
+        },
+    );
     let _ = app.emit(
         "job://progress",
-        JobProgress { job, done: 0, total: 1, message: format!("downloading typst {version}") },
+        JobProgress {
+            job,
+            done: 0,
+            total: 1,
+            message: format!("downloading typst {version}"),
+        },
     );
 
     let app2 = app.clone();
@@ -242,7 +269,11 @@ pub struct IpcError {
 
 impl IpcError {
     fn new(code: &str, message: impl Into<String>) -> Self {
-        Self { code: code.into(), message: message.into(), details: None }
+        Self {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
     }
 }
 
@@ -386,9 +417,13 @@ fn load_project(root: &Path) -> ProjectInfo {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "project".into());
     let cfg = std::fs::read_to_string(root.join("typide.toml")).unwrap_or_default();
-    let name = read_field(&cfg, "name").unwrap_or(&default_name).to_string();
+    let name = read_field(&cfg, "name")
+        .unwrap_or(&default_name)
+        .to_string();
     let kind = read_field(&cfg, "kind").unwrap_or("generic").to_string();
-    let mut entrypoint = read_field(&cfg, "entrypoint").unwrap_or("main.typ").to_string();
+    let mut entrypoint = read_field(&cfg, "entrypoint")
+        .unwrap_or("main.typ")
+        .to_string();
     if !root.join(&entrypoint).exists() {
         // Fall back to the first .typ at the root.
         if let Ok(rd) = std::fs::read_dir(root) {
@@ -435,7 +470,10 @@ fn expand_tilde(input: &str) -> PathBuf {
         if let Some(home) = home_dir() {
             return home;
         }
-    } else if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+    } else if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
         if let Some(home) = home_dir() {
             return home.join(rest);
         }
@@ -448,7 +486,10 @@ fn expand_tilde(input: &str) -> PathBuf {
 fn workspace_open(path: String) -> IpcResult<ProjectInfo> {
     let root = expand_tilde(&path);
     if !root.is_dir() {
-        return Err(IpcError::new("path.not_dir", format!("Not a folder: {path}")));
+        return Err(IpcError::new(
+            "path.not_dir",
+            format!("Not a folder: {path}"),
+        ));
     }
     Ok(load_project(&root))
 }
@@ -469,10 +510,15 @@ fn scan_project(path: String) -> IpcResult<Vec<ScannedFile>> {
         if out.len() > 2000 {
             return;
         }
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in rd.flatten() {
             let p = entry.path();
-            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             if p.is_dir() {
                 if !IGNORED_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
                     walk(&p, root, out);
@@ -481,12 +527,18 @@ fn scan_project(path: String) -> IpcResult<Vec<ScannedFile>> {
                 p.extension().and_then(|e| e.to_str()),
                 Some("typ") | Some("bib") | Some("md")
             ) {
-                let too_big = std::fs::metadata(&p).map(|m| m.len() > MAX_SCAN_BYTES).unwrap_or(true);
+                let too_big = std::fs::metadata(&p)
+                    .map(|m| m.len() > MAX_SCAN_BYTES)
+                    .unwrap_or(true);
                 if too_big {
                     continue;
                 }
                 if let Ok(content) = std::fs::read_to_string(&p) {
-                    let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().replace('\\', "/");
+                    let rel = p
+                        .strip_prefix(root)
+                        .unwrap_or(&p)
+                        .to_string_lossy()
+                        .replace('\\', "/");
                     out.push(ScannedFile {
                         path: p.to_string_lossy().to_string(),
                         rel,
@@ -513,7 +565,10 @@ fn compile(
 ) -> IpcResult<typide_world::CompileResult> {
     let root_path = std::path::PathBuf::from(&root);
     if !root_path.is_dir() {
-        return Err(IpcError::new("path.not_dir", format!("Not a folder: {root}")));
+        return Err(IpcError::new(
+            "path.not_dir",
+            format!("Not a folder: {root}"),
+        ));
     }
     Ok(typide_world::compile(&root_path, &entrypoint, &overlays))
 }
@@ -559,7 +614,11 @@ fn workspace_create(params: CreateParams) -> IpcResult<ProjectInfo> {
     }
 
     if params.git_init {
-        let _ = std::process::Command::new("git").arg("init").arg("-q").current_dir(&root).status();
+        let _ = std::process::Command::new("git")
+            .arg("init")
+            .arg("-q")
+            .current_dir(&root)
+            .status();
     }
     Ok(load_project(&root))
 }
@@ -590,15 +649,28 @@ async fn packages_fetch(
 ) -> IpcResult<Vec<String>> {
     let root_path = PathBuf::from(&root);
     if !root_path.is_dir() {
-        return Err(IpcError::new("path.not_dir", format!("Not a folder: {root}")));
+        return Err(IpcError::new(
+            "path.not_dir",
+            format!("Not a folder: {root}"),
+        ));
     }
     let reg = jobs.inner().clone();
     let (job, cancel) = reg.start();
-    let _ = app.emit("job://started", JobStarted { job, title: "Fetch packages".into() });
+    let _ = app.emit(
+        "job://started",
+        JobStarted {
+            job,
+            title: "Fetch packages".into(),
+        },
+    );
 
     let app2 = app.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        let sink = EventProgress { app: app2, job, cancel };
+        let sink = EventProgress {
+            app: app2,
+            job,
+            cancel,
+        };
         typide_packages::fetch_all_with(&root_path, online, &sink)
     })
     .await
@@ -625,15 +697,28 @@ async fn packages_make_offline_ready(
 ) -> IpcResult<typide_packages::OfflineReport> {
     let root_path = PathBuf::from(&root);
     if !root_path.is_dir() {
-        return Err(IpcError::new("path.not_dir", format!("Not a folder: {root}")));
+        return Err(IpcError::new(
+            "path.not_dir",
+            format!("Not a folder: {root}"),
+        ));
     }
     let reg = jobs.inner().clone();
     let (job, cancel) = reg.start();
-    let _ = app.emit("job://started", JobStarted { job, title: "Make offline-ready".into() });
+    let _ = app.emit(
+        "job://started",
+        JobStarted {
+            job,
+            title: "Make offline-ready".into(),
+        },
+    );
 
     let app2 = app.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        let sink = EventProgress { app: app2, job, cancel };
+        let sink = EventProgress {
+            app: app2,
+            job,
+            cancel,
+        };
         typide_packages::make_offline_ready_with(&root_path, online, vendor, &sink)
     })
     .await
@@ -662,15 +747,28 @@ async fn packages_mirror_create(
     let root_path = PathBuf::from(&root);
     let out_path = PathBuf::from(&out);
     if !root_path.is_dir() {
-        return Err(IpcError::new("path.not_dir", format!("Not a folder: {root}")));
+        return Err(IpcError::new(
+            "path.not_dir",
+            format!("Not a folder: {root}"),
+        ));
     }
     let reg = jobs.inner().clone();
     let (job, cancel) = reg.start();
-    let _ = app.emit("job://started", JobStarted { job, title: "Create package mirror".into() });
+    let _ = app.emit(
+        "job://started",
+        JobStarted {
+            job,
+            title: "Create package mirror".into(),
+        },
+    );
 
     let app2 = app.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        let sink = EventProgress { app: app2, job, cancel };
+        let sink = EventProgress {
+            app: app2,
+            job,
+            cancel,
+        };
         typide_packages::create_mirror(&root_path, &out_path, online, &sink)
     })
     .await
@@ -784,7 +882,13 @@ fn hover(
     overlays: Vec<typide_world::Overlay>,
     cursor: usize,
 ) -> IpcResult<Option<typide_world::Hover>> {
-    Ok(typide_world::hover(&PathBuf::from(&root), &entrypoint, &path, &overlays, cursor))
+    Ok(typide_world::hover(
+        &PathBuf::from(&root),
+        &entrypoint,
+        &path,
+        &overlays,
+        cursor,
+    ))
 }
 
 fn write(root: &Path, rel: &str, body: &str) -> std::io::Result<()> {
@@ -797,8 +901,16 @@ fn write(root: &Path, rel: &str, body: &str) -> std::io::Result<()> {
 
 fn scaffold(root: &Path, p: &CreateParams) -> std::io::Result<()> {
     let name = &p.name;
-    let kind = if p.template_id == "template" { "paper" } else { &p.template_id };
-    let mode = if p.packages_mode == "vendor" { "vendor" } else { "cache" };
+    let kind = if p.template_id == "template" {
+        "paper"
+    } else {
+        &p.template_id
+    };
+    let mode = if p.packages_mode == "vendor" {
+        "vendor"
+    } else {
+        "cache"
+    };
 
     let mut toml = format!(
         "[project]\nname = \"{name}\"\nkind = \"{kind}\"\nentrypoint = \"main.typ\"\n\n\
@@ -820,7 +932,11 @@ fn scaffold(root: &Path, p: &CreateParams) -> std::io::Result<()> {
     write(root, "typide.toml", &toml)?;
 
     let title = name.replace(['-', '_'], " ");
-    let cite = if p.refs { "\n\n#bibliography(\"refs.bib\", style: \"ieee\")\n" } else { "\n" };
+    let cite = if p.refs {
+        "\n\n#bibliography(\"refs.bib\", style: \"ieee\")\n"
+    } else {
+        "\n"
+    };
 
     let main = match kind {
         "thesis" => format!(
@@ -887,9 +1003,143 @@ fn scaffold(root: &Path, p: &CreateParams) -> std::io::Result<()> {
                 name.to_lowercase().replace([' ', '_'], "-")
             ),
         )?;
-        write(root, "README.md", &format!("# {title}\n\nA Typst package.\n"))?;
+        write(
+            root,
+            "README.md",
+            &format!("# {title}\n\nA Typst package.\n"),
+        )?;
     }
     write(root, ".gitignore", "/out\n/target\n*.pdf\n")?;
+    Ok(())
+}
+
+// ── Crash recovery: autosaved drafts outside the project (§ unsaved-work) ─────
+//
+// Dirty editor buffers are periodically written here (NOT into the project, so
+// there is no autosave-to-disk / file-watcher churn). On reopen, drafts newer
+// than the file on disk are offered back to the user. Each draft is one JSON
+// file named by a stable hash of the absolute file path.
+
+/// A recoverable draft (metadata only; content is read on demand).
+#[derive(Serialize)]
+struct RecoveryDraft {
+    path: String,
+    #[serde(rename = "savedAt")]
+    saved_at: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DraftFile {
+    path: String,
+    saved_at: u64,
+    content: String,
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn mtime_millis(p: &Path) -> Option<u64> {
+    std::fs::metadata(p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+}
+
+/// Stable, filesystem-safe filename for a draft of `abs_path`.
+fn draft_name(abs_path: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    abs_path.hash(&mut h);
+    format!("{:016x}.json", h.finish())
+}
+
+fn recovery_dir(app: &AppHandle) -> Result<PathBuf, IpcError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| IpcError::new("recovery.dir", format!("no app data dir: {e}")))?
+        .join("recovery");
+    std::fs::create_dir_all(&dir).map_err(|e| IpcError::new("recovery.dir", e.to_string()))?;
+    Ok(dir)
+}
+
+/// Autosave a dirty buffer's content to the recovery store.
+#[tauri::command]
+fn recovery_save(app: AppHandle, path: String, content: String) -> IpcResult<()> {
+    let file = recovery_dir(&app)?.join(draft_name(&path));
+    let draft = DraftFile {
+        path: path.clone(),
+        saved_at: now_millis(),
+        content,
+    };
+    let json =
+        serde_json::to_vec(&draft).map_err(|e| IpcError::new("recovery.enc", e.to_string()))?;
+    std::fs::write(&file, json).map_err(|e| IpcError::new("recovery.write", format!("{path}: {e}")))
+}
+
+/// List drafts that are newer than their on-disk file (or whose file is gone)
+/// and whose content actually differs — i.e. genuine unsaved work to recover.
+#[tauri::command]
+fn recovery_scan(app: AppHandle) -> IpcResult<Vec<RecoveryDraft>> {
+    let dir = recovery_dir(&app)?;
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return Ok(out);
+    };
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&p) else {
+            continue;
+        };
+        let Ok(draft) = serde_json::from_slice::<DraftFile>(&bytes) else {
+            continue;
+        };
+        let disk = Path::new(&draft.path);
+        let recoverable = match (std::fs::read_to_string(disk), mtime_millis(disk)) {
+            // File exists: recover only if the draft is newer and differs.
+            (Ok(on_disk), Some(mt)) => draft.saved_at > mt && on_disk != draft.content,
+            // File missing: the draft is all that's left.
+            _ => true,
+        };
+        if recoverable {
+            out.push(RecoveryDraft {
+                path: draft.path,
+                saved_at: draft.saved_at,
+            });
+        } else {
+            // Stale draft (file was saved since): clean it up.
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    Ok(out)
+}
+
+/// Return a draft's saved content.
+#[tauri::command]
+fn recovery_read(app: AppHandle, path: String) -> IpcResult<String> {
+    let file = recovery_dir(&app)?.join(draft_name(&path));
+    let bytes =
+        std::fs::read(&file).map_err(|e| IpcError::new("recovery.read", format!("{path}: {e}")))?;
+    let draft: DraftFile =
+        serde_json::from_slice(&bytes).map_err(|e| IpcError::new("recovery.dec", e.to_string()))?;
+    Ok(draft.content)
+}
+
+/// Drop a single draft (after it's saved or explicitly discarded).
+#[tauri::command]
+fn recovery_discard(app: AppHandle, path: String) -> IpcResult<()> {
+    let file = recovery_dir(&app)?.join(draft_name(&path));
+    if file.exists() {
+        std::fs::remove_file(&file).map_err(|e| IpcError::new("recovery.rm", e.to_string()))?;
+    }
     Ok(())
 }
 
@@ -898,7 +1148,8 @@ mod tests {
     use super::*;
 
     fn tmp() -> PathBuf {
-        let p = std::env::temp_dir().join(format!("typide-test-{}", std::process::id()))
+        let p = std::env::temp_dir()
+            .join(format!("typide-test-{}", std::process::id()))
             .join(format!("{:?}", std::time::SystemTime::now()));
         std::fs::create_dir_all(&p).unwrap();
         p
@@ -922,18 +1173,44 @@ mod tests {
     #[test]
     fn expand_tilde_resolves_home_and_never_yields_a_literal_tilde() {
         // Absolute and plain relative paths pass through untouched.
-        let abs = if cfg!(windows) { "C:\\tmp\\proj" } else { "/tmp/proj" };
+        let abs = if cfg!(windows) {
+            "C:\\tmp\\proj"
+        } else {
+            "/tmp/proj"
+        };
         assert_eq!(expand_tilde(abs), PathBuf::from(abs));
-        assert_eq!(expand_tilde("research/thesis"), PathBuf::from("research/thesis"));
+        assert_eq!(
+            expand_tilde("research/thesis"),
+            PathBuf::from("research/thesis")
+        );
 
         // "~/…" must expand to an absolute home path — never a literal "~".
         if home_dir().is_some() {
             let expanded = expand_tilde("~/research");
-            assert!(expanded.is_absolute(), "expected absolute, got {expanded:?}");
+            assert!(
+                expanded.is_absolute(),
+                "expected absolute, got {expanded:?}"
+            );
             assert!(expanded.ends_with("research"));
             assert_ne!(expanded, PathBuf::from("~/research"));
             assert_eq!(expand_tilde("~"), home_dir().unwrap());
         }
+    }
+
+    #[test]
+    fn draft_name_is_stable_and_distinct() {
+        let a = draft_name("/home/u/proj/main.typ");
+        assert_eq!(
+            a,
+            draft_name("/home/u/proj/main.typ"),
+            "same path → same name"
+        );
+        assert_ne!(
+            a,
+            draft_name("/home/u/proj/chapter.typ"),
+            "different path → different name"
+        );
+        assert!(a.ends_with(".json"));
     }
 
     #[test]
@@ -974,7 +1251,10 @@ mod tests {
         for d in &result.diagnostics {
             eprintln!("  [{}] {}:{} {}", d.severity, d.file, d.line, d.message);
         }
-        assert!(result.page_count >= 1, "template should compile to >= 1 page");
+        assert!(
+            result.page_count >= 1,
+            "template should compile to >= 1 page"
+        );
     }
 
     #[test]
@@ -1037,6 +1317,10 @@ pub fn run() {
             refs_zotero_import,
             file_read,
             file_write,
+            recovery_save,
+            recovery_scan,
+            recovery_read,
+            recovery_discard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Typide");

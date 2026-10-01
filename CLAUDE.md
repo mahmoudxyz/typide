@@ -184,6 +184,33 @@ installs; mirror *sync*; mid-download install cancellation; and the policy
 (note-taking = writing Typst with comments). Hayagriva `.yml` references and the
 submission *checker report* (§15.3) are the remaining academic-workflow polish.
 
+### Production hardening (toward 1.0)
+
+- **Multi-OS release** — GitHub Actions builds signed-ready installers on tag
+  push: macOS universal `.dmg`, Windows `.msi`/`.exe`, Linux
+  `.AppImage`/`.deb`/`.rpm` (`.github/workflows/release.yml`), plus a `ci.yml`
+  (fmt + clippy + check-deps + workspace tests + frontend). The frontend is
+  built in a dedicated step and the bundle runs with `--config ci.conf.json`
+  (empty `beforeBuildCommand`) because `tauri-action` mis-resolved the relative
+  `../ui` prefix on the runners.
+- **`~` path expansion** — `expand_tilde()` resolves a leading `~`/`~/`/`~\` in
+  `workspace_open`/`workspace_create`, so a project is never created in a literal
+  `~` folder; the wizard also resolves its default to the real home path.
+- **Unsaved-work safety** — dirty buffers are mirrored every 4 s to a crash-
+  recovery store in the app-data dir (NOT the project), via `recovery_save/
+  scan/read/discard`; `RecoveryBanner.svelte` offers restore-or-discard on
+  reopen when a draft is newer than disk. A window **close guard**
+  (`onCloseRequested` → `CloseGuard.svelte`) prompts Save/Discard/Cancel when
+  buffers are dirty (needs `core:window:allow-destroy`).
+- **Production CSP** — `security.csp` is tightened for release (no dev-server /
+  `ws://localhost` / HMR origins); the permissive dev policy moves to
+  `security.devCsp`.
+
+Offline-first is already satisfied without `resources/`: fonts are embedded in
+the compiler (`typst-kit` `embedded-fonts`), the built-in generators scaffold
+offline, and compile/preview/export use the embedded compiler (no `typst`
+subprocess). See `resources/README.md`.
+
 ### Dev note — window reloads on save under `cargo tauri dev`
 
 `cargo tauri dev` runs a file watcher that rebuilds and relaunches the window

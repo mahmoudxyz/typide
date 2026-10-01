@@ -3,6 +3,7 @@
 // real filesystem commands via `api`, and analysis is recomputed live on edit.
 import {
   api,
+  isTauri,
   setupJobEvents,
   type CreateParams,
   type CompileResult,
@@ -117,6 +118,8 @@ export const ui = $state({
   cursor: { line: 1, col: 1 },
   compiling: false,
   loading: false,
+  closeGuard: false,
+  recovery: null as { path: string; savedAt: number }[] | null,
   toast: null as { message: string; kind: "ok" | "error" } | null,
   leftWidth: loadSize("left", 272),
   previewWidth: loadSize("preview", 420),
@@ -710,6 +713,7 @@ export async function loadProject(path: string) {
     ui.view = "workspace";
     ui.activeTool = "project";
     runCompile(); // initial preview (async, non-blocking)
+    scanRecovery(); // offer any unsaved work from a previous session
   } finally {
     ui.loading = false;
   }
@@ -782,6 +786,7 @@ export async function saveFile(path: string) {
   if (!c || c.content === c.original) return;
   await api.fileWrite(path, c.content);
   c.original = c.content;
+  void api.recoveryDiscard(path); // clean buffer → no draft to recover
 }
 
 export async function saveActive() {
@@ -796,6 +801,7 @@ export async function saveAllDirty() {
       try {
         await api.fileWrite(path, c.content);
         c.original = c.content;
+        void api.recoveryDiscard(path);
       } catch (e) {
         console.error("save failed", path, e);
       }
@@ -831,8 +837,115 @@ export function isDirty(path: string): boolean {
   return !!c && c.content !== c.original;
 }
 
+/** How many open buffers have unsaved changes. */
+export function dirtyCount(): number {
+  return Object.keys(cache).filter((p) => isDirty(p)).length;
+}
+
 /** Relative path from the project root, for breadcrumbs. */
 export function relPath(path: string): string {
   const root = data.project?.root;
   return root && path.startsWith(root + "/") ? path.slice(root.length + 1) : baseName(path);
+}
+
+// ── Unsaved-work safety: autosave recovery + close guard ─────────────────────
+
+let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Periodically mirror dirty buffers to the crash-recovery store (not the
+ *  project). Cheap: a few small files every few seconds. */
+export function initRecoveryAutosave() {
+  if (!isTauri() || recoveryTimer) return;
+  recoveryTimer = setInterval(() => {
+    for (const path of Object.keys(cache)) {
+      if (isDirty(path)) void api.recoverySave(path, cache[path].content);
+    }
+  }, 4000);
+}
+
+/** After a project loads, surface any drafts newer than disk for this project. */
+export async function scanRecovery() {
+  if (!isTauri() || !data.project) return;
+  try {
+    const all = await api.recoveryScan();
+    const root = data.project.root;
+    const mine = all.filter((d) => d.path === root || d.path.startsWith(root + "/"));
+    ui.recovery = mine.length ? mine : null;
+  } catch {
+    ui.recovery = null;
+  }
+}
+
+/** Load each recovered draft into its buffer (and the live editor if open). */
+export async function restoreRecovery() {
+  const drafts = ui.recovery ?? [];
+  for (const d of drafts) {
+    try {
+      const content = await api.recoveryRead(d.path);
+      if (!(d.path in cache)) {
+        const original = await api.fileRead(d.path).catch(() => content);
+        cache[d.path] = { content, original };
+      } else {
+        cache[d.path].content = content;
+      }
+      if (!ui.openTabs.includes(d.path)) ui.openTabs.push(d.path);
+    } catch (e) {
+      console.error("restore failed", d.path, e);
+    }
+  }
+  if (drafts[0]) ui.activeTab = drafts[0].path;
+  ui.recovery = null;
+  reloadActiveEditor();
+  recompute();
+  scheduleCompile();
+  showToast(`Recovered ${drafts.length} unsaved file${drafts.length === 1 ? "" : "s"}`);
+}
+
+/** Drop all recovered drafts for this project without restoring them. */
+export async function discardRecovery() {
+  for (const d of ui.recovery ?? []) void api.recoveryDiscard(d.path);
+  ui.recovery = null;
+}
+
+/** Intercept the window close: if there are unsaved buffers, ask first. */
+export async function initCloseGuard() {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    await win.onCloseRequested((event) => {
+      if (dirtyCount() > 0) {
+        event.preventDefault();
+        ui.closeGuard = true;
+      }
+    });
+  } catch (e) {
+    console.error("close guard init failed", e);
+  }
+}
+
+async function forceClose() {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().destroy();
+}
+
+/** Close-guard action: save everything, then quit. */
+export async function saveAndQuit() {
+  await saveAllDirty();
+  ui.closeGuard = false;
+  await forceClose();
+}
+
+/** Close-guard action: discard unsaved work (and its drafts), then quit. */
+export async function discardAndQuit() {
+  for (const path of Object.keys(cache)) {
+    if (isDirty(path)) void api.recoveryDiscard(path);
+  }
+  ui.closeGuard = false;
+  await forceClose();
+}
+
+/** Close-guard action: keep editing. */
+export function cancelQuit() {
+  ui.closeGuard = false;
 }

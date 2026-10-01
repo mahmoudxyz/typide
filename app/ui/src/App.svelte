@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ui, applyTheme, persistSize, saveAndCompile, loadProject, completeFirstRun, initJobs, initPolicy } from "./lib/store.svelte";
+  import { ui, applyTheme, persistSize, saveAndCompile, loadProject, completeFirstRun, initJobs, initPolicy, initCloseGuard, initRecoveryAutosave } from "./lib/store.svelte";
   import Resizer from "./components/Resizer.svelte";
   import TitleBar from "./components/TitleBar.svelte";
   import ActivityBar from "./components/ActivityBar.svelte";
@@ -18,12 +18,16 @@
   import CitationPicker from "./components/CitationPicker.svelte";
   import ToolchainManager from "./components/ToolchainManager.svelte";
   import ConsentDialog from "./components/ConsentDialog.svelte";
+  import CloseGuard from "./components/CloseGuard.svelte";
+  import RecoveryBanner from "./components/RecoveryBanner.svelte";
   import Toast from "./components/Toast.svelte";
 
   onMount(() => {
     applyTheme();
     initPolicy();
     initJobs();
+    initCloseGuard();
+    initRecoveryAutosave();
     // Dev convenience: open the demo project directly with ?demo in the URL.
     if (typeof location !== "undefined" && new URLSearchParams(location.search).has("demo")) {
       const params = new URLSearchParams(location.search);
@@ -142,6 +146,8 @@
 
 {#if ui.toolchainManager}<ToolchainManager />{/if}
 <ConsentDialog />
+{#if ui.closeGuard}<CloseGuard />{/if}
+{#if ui.recovery}<RecoveryBanner />{/if}
 
 {#if ui.wizardOpen}<NewProjectWizard />{/if}
 {#if ui.showFirstRun}<FirstRunSetup />{/if}
