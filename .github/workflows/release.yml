@@ -20,15 +20,15 @@ jobs:
         include:
           # Apple Silicon + Intel in one universal .dmg
           - platform: macos-latest
-            args: "--target universal-apple-darwin"
+            args: "--config ci.conf.json --target universal-apple-darwin"
             rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
           # .deb / .rpm / .AppImage — 22.04 keeps glibc broadly compatible
           - platform: ubuntu-22.04
-            args: ""
+            args: "--config ci.conf.json"
             rust-targets: ""
           # .msi (WiX) + .exe (NSIS)
           - platform: windows-latest
-            args: ""
+            args: "--config ci.conf.json"
             rust-targets: ""
 
     runs-on: ${{ matrix.platform }}
@@ -65,6 +65,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm --prefix app/ui ci
+
+      - name: Build frontend
+        run: npm --prefix app/ui run build
 
       - name: Build app and draft release
         uses: tauri-apps/tauri-action@v0
