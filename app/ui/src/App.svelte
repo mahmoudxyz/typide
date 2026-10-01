@@ -20,6 +20,8 @@
   import ConsentDialog from "./components/ConsentDialog.svelte";
   import CloseGuard from "./components/CloseGuard.svelte";
   import RecoveryBanner from "./components/RecoveryBanner.svelte";
+  import PromptDialog from "./components/PromptDialog.svelte";
+  import TreeContextMenu from "./components/TreeContextMenu.svelte";
   import Toast from "./components/Toast.svelte";
 
   onMount(() => {
@@ -148,6 +150,8 @@
 <ConsentDialog />
 {#if ui.closeGuard}<CloseGuard />{/if}
 {#if ui.recovery}<RecoveryBanner />{/if}
+<TreeContextMenu />
+<PromptDialog />
 
 {#if ui.wizardOpen}<NewProjectWizard />{/if}
 {#if ui.showFirstRun}<FirstRunSetup />{/if}

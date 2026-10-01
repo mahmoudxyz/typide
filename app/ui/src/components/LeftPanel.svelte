@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
-  import { ui } from "../lib/store.svelte";
+  import { ui, data, newFile, newFolder } from "../lib/store.svelte";
   import ProjectPanel from "./ProjectPanel.svelte";
   import StructurePanel from "./StructurePanel.svelte";
   import NotesPanel from "./NotesPanel.svelte";
@@ -23,7 +23,8 @@
     <span class="title">{titles[ui.activeTool]}</span>
     <div class="hactions">
       {#if ui.activeTool === "project"}
-        <button title="New file"><Icon name="file" size={14} /></button>
+        <button title="New file" onclick={() => newFile(data.selectedPath)}><Icon name="file" size={14} /></button>
+        <button title="New folder" onclick={() => newFolder(data.selectedPath)}><Icon name="folder" size={14} /></button>
       {/if}
       <button title="Collapse" onclick={() => (ui.leftVisible = false)}>
         <Icon name="sidebar" size={14} />

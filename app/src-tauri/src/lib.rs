@@ -587,6 +587,138 @@ fn file_write(path: String, content: String) -> IpcResult<()> {
     std::fs::write(&path, content).map_err(|e| IpcError::new("file.write", format!("{path}: {e}")))
 }
 
+// ── Project file management (tree: new / rename / delete / paste) ─────────────
+
+/// Create an empty file (and any missing parent dirs). Errors if it exists.
+#[tauri::command]
+fn fs_create_file(path: String) -> IpcResult<()> {
+    let p = Path::new(&path);
+    if p.exists() {
+        return Err(IpcError::new(
+            "fs.exists",
+            format!("Already exists: {path}"),
+        ));
+    }
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| IpcError::new("fs.mkdir", e.to_string()))?;
+    }
+    std::fs::write(p, "").map_err(|e| IpcError::new("fs.create", format!("{path}: {e}")))
+}
+
+/// Create a directory (and any missing parents).
+#[tauri::command]
+fn fs_create_dir(path: String) -> IpcResult<()> {
+    let p = Path::new(&path);
+    if p.exists() {
+        return Err(IpcError::new(
+            "fs.exists",
+            format!("Already exists: {path}"),
+        ));
+    }
+    std::fs::create_dir_all(p).map_err(|e| IpcError::new("fs.mkdir", format!("{path}: {e}")))
+}
+
+/// Rename/move a file or folder.
+#[tauri::command]
+fn fs_rename(from: String, to: String) -> IpcResult<()> {
+    let dst = Path::new(&to);
+    if dst.exists() {
+        return Err(IpcError::new("fs.exists", format!("Target exists: {to}")));
+    }
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| IpcError::new("fs.mkdir", e.to_string()))?;
+    }
+    std::fs::rename(&from, &to)
+        .map_err(|e| IpcError::new("fs.rename", format!("{from} → {to}: {e}")))
+}
+
+/// Delete a file or folder (recursive for folders).
+#[tauri::command]
+fn fs_delete(path: String) -> IpcResult<()> {
+    let p = Path::new(&path);
+    let res = if p.is_dir() {
+        std::fs::remove_dir_all(p)
+    } else {
+        std::fs::remove_file(p)
+    };
+    res.map_err(|e| IpcError::new("fs.delete", format!("{path}: {e}")))
+}
+
+/// Write raw bytes to a file (for pasted/imported images and binaries).
+#[tauri::command]
+fn fs_write_bytes(path: String, data: Vec<u8>) -> IpcResult<()> {
+    if let Some(parent) = Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, data).map_err(|e| IpcError::new("fs.write_bytes", format!("{path}: {e}")))
+}
+
+/// Copy OS files into `dest_dir` (for pasting files from the file manager).
+/// Returns the base names actually written (deduplicated on collision).
+#[tauri::command]
+fn fs_import(dest_dir: String, sources: Vec<String>) -> IpcResult<Vec<String>> {
+    let dir = Path::new(&dest_dir);
+    std::fs::create_dir_all(dir).map_err(|e| IpcError::new("fs.mkdir", e.to_string()))?;
+    let mut written = Vec::new();
+    for src in &sources {
+        // Accept file:// URIs as well as plain paths.
+        let clean = src.strip_prefix("file://").unwrap_or(src);
+        let clean = percent_decode(clean);
+        let sp = Path::new(&clean);
+        let Some(name) = sp.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let dest = unique_path(dir, name);
+        if sp.is_dir() {
+            continue; // skip folders for paste-import
+        }
+        if std::fs::copy(sp, &dest).is_ok() {
+            if let Some(n) = dest.file_name().and_then(|n| n.to_str()) {
+                written.push(n.to_string());
+            }
+        }
+    }
+    Ok(written)
+}
+
+/// Minimal `%XX` percent-decoding for `file://` URIs (spaces etc.).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Pick a non-colliding path in `dir` for `name` (adds ` (2)`, ` (3)`, …).
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) => (s.to_string(), format!(".{e}")),
+        None => (name.to_string(), String::new()),
+    };
+    for n in 2..10_000 {
+        let c = dir.join(format!("{stem} ({n}){ext}"));
+        if !c.exists() {
+            return c;
+        }
+    }
+    dir.join(name)
+}
+
 /// Create a project on disk from a wizard generator, then return its info.
 #[tauri::command]
 fn workspace_create(params: CreateParams) -> IpcResult<ProjectInfo> {
@@ -1217,6 +1349,34 @@ mod tests {
     }
 
     #[test]
+    fn fs_ops_create_rename_delete() {
+        let root = tmp();
+        let a = root.join("a.typ");
+        fs_create_file(a.to_string_lossy().to_string()).unwrap();
+        assert!(a.exists());
+        // Creating again errors.
+        assert!(fs_create_file(a.to_string_lossy().to_string()).is_err());
+        let b = root.join("sub/b.typ");
+        fs_rename(
+            a.to_string_lossy().to_string(),
+            b.to_string_lossy().to_string(),
+        )
+        .unwrap();
+        assert!(!a.exists() && b.exists(), "rename moves + creates parent");
+        fs_delete(root.join("sub").to_string_lossy().to_string()).unwrap();
+        assert!(!b.exists());
+    }
+
+    #[test]
+    fn unique_path_avoids_collisions() {
+        let root = tmp();
+        std::fs::write(root.join("img.png"), b"x").unwrap();
+        let u = unique_path(&root, "img.png");
+        assert_eq!(u.file_name().unwrap().to_string_lossy(), "img (2).png");
+        assert_eq!(percent_decode("a%20b.png"), "a b.png");
+    }
+
+    #[test]
     fn draft_name_is_stable_and_distinct() {
         let a = draft_name("/home/u/proj/main.typ");
         assert_eq!(
@@ -1337,6 +1497,12 @@ pub fn run() {
             refs_zotero_import,
             file_read,
             file_write,
+            fs_create_file,
+            fs_create_dir,
+            fs_rename,
+            fs_delete,
+            fs_write_bytes,
+            fs_import,
             recovery_save,
             recovery_scan,
             recovery_read,

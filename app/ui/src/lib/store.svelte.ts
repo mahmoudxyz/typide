@@ -120,6 +120,14 @@ export const ui = $state({
   loading: false,
   closeGuard: false,
   recovery: null as { path: string; savedAt: number }[] | null,
+  treeMenu: null as { x: number; y: number; path: string; kind: string } | null,
+  prompt: null as {
+    title: string;
+    label: string;
+    value: string;
+    confirmText: string;
+    onConfirm: (value: string) => void;
+  } | null,
   syncScroll: true,
   previewSync: null as { page: number; x: number; y: number; seq: number } | null,
   toast: null as { message: string; kind: "ok" | "error" } | null,
@@ -146,6 +154,7 @@ export function persistSize(key: "left" | "preview" | "bottom", value: number) {
 export const data = $state({
   project: null as ProjectInfo | null,
   tree: null as FileNode | null,
+  selectedPath: "" as string,
   structure: [] as StructureNode[],
   diagnostics: [] as Diagnostic[],
   packages: [] as PackageInfo[],
@@ -878,6 +887,201 @@ export function dirtyCount(): number {
 export function relPath(path: string): string {
   const root = data.project?.root;
   return root && path.startsWith(root + "/") ? path.slice(root.length + 1) : baseName(path);
+}
+
+// ── Project file management (new / rename / delete / paste) ──────────────────
+
+/** Reload the on-disk file tree into `data.tree`. */
+export async function refreshTree() {
+  if (!data.project) return;
+  try {
+    data.tree = await api.readTree(data.project.root);
+    scanned = await api.scanProject(data.project.root);
+    recompute();
+  } catch (e) {
+    console.error("tree refresh failed", e);
+  }
+}
+
+/** The directory a new item should go in, given a selected node path. */
+function dirForTarget(path: string): string {
+  const root = data.project?.root ?? "";
+  if (!path) return root;
+  // A folder node → itself; a file node → its parent.
+  const node = findNode(data.tree, path);
+  if (node?.kind === "dir") return path;
+  const slash = path.lastIndexOf("/");
+  return slash > 0 ? path.slice(0, slash) : root;
+}
+
+function findNode(n: FileNode | null, path: string): FileNode | null {
+  if (!n) return null;
+  if (n.path === path) return n;
+  for (const c of n.children ?? []) {
+    const hit = findNode(c, path);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Remap open tabs / buffers / scanned entries after a rename or move. */
+function remapPaths(from: string, to: string) {
+  const fix = (p: string) =>
+    p === from ? to : p.startsWith(from + "/") ? to + p.slice(from.length) : p;
+  for (const k of Object.keys(cache)) {
+    const nk = fix(k);
+    if (nk !== k) {
+      cache[nk] = cache[k];
+      delete cache[k];
+    }
+  }
+  ui.openTabs = ui.openTabs.map(fix);
+  if (ui.activeTab) ui.activeTab = fix(ui.activeTab);
+  for (const sf of scanned) sf.path = fix(sf.path);
+}
+
+/** Forget open tabs / buffers under a deleted path. */
+function forgetPaths(path: string) {
+  const under = (p: string) => p === path || p.startsWith(path + "/");
+  for (const k of Object.keys(cache)) if (under(k)) delete cache[k];
+  ui.openTabs = ui.openTabs.filter((p) => !under(p));
+  if (under(ui.activeTab)) ui.activeTab = ui.openTabs[ui.openTabs.length - 1] ?? "";
+}
+
+/** Prompt for a name and create a new file in (or beside) the target. */
+export function newFile(targetPath?: string) {
+  const dir = dirForTarget(targetPath ?? data.selectedPath);
+  ui.prompt = {
+    title: "New file",
+    label: "File name",
+    value: "untitled.typ",
+    confirmText: "Create",
+    onConfirm: async (name) => {
+      const path = `${dir}/${name.trim()}`;
+      try {
+        await api.fsCreateFile(path);
+        await refreshTree();
+        await openFile(path);
+      } catch (e) {
+        showToast("Create failed: " + String((e as any)?.message ?? e), "error");
+      }
+    },
+  };
+}
+
+/** Prompt for a name and create a new folder in (or beside) the target. */
+export function newFolder(targetPath?: string) {
+  const dir = dirForTarget(targetPath ?? data.selectedPath);
+  ui.prompt = {
+    title: "New folder",
+    label: "Folder name",
+    value: "untitled",
+    confirmText: "Create",
+    onConfirm: async (name) => {
+      try {
+        await api.fsCreateDir(`${dir}/${name.trim()}`);
+        await refreshTree();
+      } catch (e) {
+        showToast("Create failed: " + String((e as any)?.message ?? e), "error");
+      }
+    },
+  };
+}
+
+/** Prompt to rename a file or folder, keeping open tabs in sync. */
+export function renameNode(path: string) {
+  const dir = path.slice(0, path.lastIndexOf("/"));
+  ui.prompt = {
+    title: "Rename",
+    label: "New name",
+    value: baseName(path),
+    confirmText: "Rename",
+    onConfirm: async (name) => {
+      const to = `${dir}/${name.trim()}`;
+      if (to === path) return;
+      try {
+        await api.fsRename(path, to);
+        remapPaths(path, to);
+        await refreshTree();
+      } catch (e) {
+        showToast("Rename failed: " + String((e as any)?.message ?? e), "error");
+      }
+    },
+  };
+}
+
+/** Delete a file or folder (with confirmation), closing any open tabs under it. */
+export function deleteNode(path: string) {
+  const name = baseName(path);
+  ui.prompt = {
+    title: "Delete",
+    label: `Type the name to confirm deleting "${name}"`,
+    value: "",
+    confirmText: "Delete",
+    onConfirm: async (typed) => {
+      if (typed.trim() !== name) {
+        showToast("Name didn't match — not deleted", "error");
+        return;
+      }
+      try {
+        await api.fsDelete(path);
+        forgetPaths(path);
+        await refreshTree();
+      } catch (e) {
+        showToast("Delete failed: " + String((e as any)?.message ?? e), "error");
+      }
+    },
+  };
+}
+
+/** Paste files/images from a clipboard or drop into the project. */
+export async function pasteIntoProject(targetPath: string, dt: DataTransfer | null) {
+  if (!data.project || !dt) return;
+  const dir = dirForTarget(targetPath || data.selectedPath);
+  let count = 0;
+
+  // 1) Real file blobs (pasted/dragged images or files).
+  for (const file of Array.from(dt.files ?? [])) {
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const name = file.name || `pasted-${Date.now()}.${extFromMime(file.type)}`;
+      await api.fsWriteBytes(`${dir}/${name}`, buf);
+      count++;
+    } catch (e) {
+      console.error("paste file failed", e);
+    }
+  }
+
+  // 2) File-manager copies arrive as a URI list, not blobs.
+  if (count === 0) {
+    const uriList = dt.getData("text/uri-list") || dt.getData("text/plain");
+    const uris = uriList
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith("file://"));
+    if (uris.length) {
+      try {
+        const written = await api.fsImport(dir, uris);
+        count += written.length;
+      } catch (e) {
+        console.error("paste import failed", e);
+      }
+    }
+  }
+
+  if (count > 0) {
+    await refreshTree();
+    showToast(`Added ${count} file${count === 1 ? "" : "s"} to ${relPath(dir) || "project"}`);
+  }
+}
+
+function extFromMime(mime: string): string {
+  if (mime === "image/png") return "png";
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/gif") return "gif";
+  if (mime === "image/svg+xml") return "svg";
+  if (mime === "image/webp") return "webp";
+  return "bin";
 }
 
 // ── Unsaved-work safety: autosave recovery + close guard ─────────────────────

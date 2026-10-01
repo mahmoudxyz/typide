@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import type { FileNode } from "../lib/types";
-  import { ui, openFile, isDirty } from "../lib/store.svelte";
+  import { ui, data, openFile, isDirty, renameNode } from "../lib/store.svelte";
   import TreeNode from "./TreeNode.svelte";
 
   import { untrack } from "svelte";
@@ -17,22 +17,36 @@
   };
 
   function click() {
+    data.selectedPath = node.path;
     if (node.kind === "dir") open = !open;
     else openFile(node.path);
   }
 
+  function menu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    data.selectedPath = node.path;
+    ui.treeMenu = { x: e.clientX, y: e.clientY, path: node.path, kind: node.kind };
+  }
+
   const isActive = $derived(ui.activeTab === node.path);
+  const isSelected = $derived(data.selectedPath === node.path);
 </script>
 
 <div
   class="row"
   class:active={isActive}
+  class:selected={isSelected}
   style="padding-left: {8 + depth * 14}px"
   onclick={click}
+  oncontextmenu={menu}
   role="treeitem"
   aria-selected={isActive}
   tabindex="0"
-  onkeydown={(e) => e.key === "Enter" && click()}
+  onkeydown={(e) => {
+    if (e.key === "Enter") click();
+    else if (e.key === "F2") { e.preventDefault(); renameNode(node.path); }
+  }}
 >
   {#if node.kind === "dir"}
     <span class="twist" class:open><Icon name="chevron" size={12} /></span>
@@ -66,6 +80,9 @@
     white-space: nowrap;
   }
   .row:hover {
+    background: var(--bg-4);
+  }
+  .row.selected {
     background: var(--bg-4);
   }
   .row.active {

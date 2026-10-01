@@ -488,4 +488,30 @@ export const api = {
     if (!isTauri()) return;
     return tauriInvoke<void>("recovery_discard", { path });
   },
+
+  // ── Project file management ────────────────────────────────────────────────
+  async fsCreateFile(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_create_file", { path });
+  },
+  async fsCreateDir(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_create_dir", { path });
+  },
+  async fsRename(from: string, to: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_rename", { from, to });
+  },
+  async fsDelete(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_delete", { path });
+  },
+  async fsWriteBytes(path: string, data: Uint8Array): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_write_bytes", { path, data: Array.from(data) });
+  },
+  async fsImport(destDir: string, sources: string[]): Promise<string[]> {
+    if (!isTauri()) return [];
+    return tauriInvoke<string[]>("fs_import", { destDir, sources });
+  },
 };
