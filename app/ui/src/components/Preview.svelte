@@ -9,6 +9,11 @@
   let menuOpen = $state(false);
   let scrollW = $state(400);
   let scrollH = $state(600);
+  let scrollEl = $state<HTMLElement | null>(null);
+
+  // Editor→preview sync highlight: which page + vertical fraction to pulse.
+  let hl = $state<{ page: number; frac: number } | null>(null);
+  let hlTimer: ReturnType<typeof setTimeout> | null = null;
 
   const compiled = $derived(data.compiled);
   const svgPages = $derived(compiled?.pages ?? []);
@@ -66,6 +71,28 @@
     const ypt = ((e.clientY - rect.top) / rect.height) * dims.h;
     jumpToClick(i + 1, xpt, ypt);
   }
+
+  // Editor caret moved → scroll the matching spot into view and pulse a marker.
+  // Keyed on `seq` so recompiles (which change svgPages) don't re-trigger it.
+  let lastSyncSeq = -1;
+  $effect(() => {
+    const s = ui.previewSync;
+    if (!s || s.seq === lastSyncSeq) return;
+    lastSyncSeq = s.seq;
+    if (!scrollEl || svgPages.length === 0) return;
+    const pages = scrollEl.querySelectorAll<HTMLElement>(".svgpage");
+    const pageEl = pages[s.page - 1];
+    if (!pageEl) return;
+    const frac = Math.min(1, Math.max(0, s.y / dims.h));
+    const pr = pageEl.getBoundingClientRect();
+    const sr = scrollEl.getBoundingClientRect();
+    const pageTopInScroll = pr.top - sr.top + scrollEl.scrollTop;
+    const target = pageTopInScroll + frac * pageEl.clientHeight - scrollEl.clientHeight * 0.33;
+    scrollEl.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    hl = { page: s.page, frac };
+    if (hlTimer) clearTimeout(hlTimer);
+    hlTimer = setTimeout(() => (hl = null), 1400);
+  });
 </script>
 
 <section class="preview" style="width: {ui.previewWidth}px">
@@ -93,12 +120,20 @@
       <button class="zb" onclick={() => step(10)} title="Zoom in">+</button>
     </div>
 
+    <button
+      class="tgl"
+      class:on={ui.syncScroll}
+      title={ui.syncScroll ? "Sync preview to cursor: on" : "Sync preview to cursor: off"}
+      onclick={() => (ui.syncScroll = !ui.syncScroll)}
+    >
+      <Icon name="link" size={14} />
+    </button>
     <button class="tgl" class:on={invert} title="Invert pages" onclick={() => (invert = !invert)}>
       <Icon name="moon" size={14} />
     </button>
   </header>
 
-  <div class="scroll" class:invert bind:clientWidth={scrollW} bind:clientHeight={scrollH}>
+  <div class="scroll" class:invert bind:this={scrollEl} bind:clientWidth={scrollW} bind:clientHeight={scrollH}>
     {#if svgPages.length > 0}
       <div class="pages-wrap">
         {#each svgPages as svg, i (i)}
@@ -113,6 +148,9 @@
           >
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
             {@html svg}
+            {#if hl && hl.page === i + 1}
+              <span class="synchl" style="top: {hl.frac * 100}%"></span>
+            {/if}
             <span class="pnum">{i + 1}</span>
           </div>
         {/each}
@@ -144,7 +182,7 @@
   </div>
 
   <footer>
-    <span><span class="live" class:busy={ui.compiling}></span> {ui.compiling ? "compiling…" : "live · click to jump"}</span>
+    <span><span class="live" class:busy={ui.compiling}></span> {ui.compiling ? "compiling…" : ui.syncScroll ? "live · click ⇄ cursor sync" : "live · click to jump"}</span>
     {#if compiled}
       <span class="mono">{compiled.page_count} pp · {compiled.compile_ms} ms</span>
     {:else}
@@ -294,7 +332,6 @@
     background: #fff;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
     border-radius: 2px;
-    overflow: hidden;
     line-height: 0;
     position: relative;
     cursor: text;
@@ -304,6 +341,33 @@
     width: 100%;
     height: auto;
     display: block;
+    /* Keep Typst's vector output crisp at any zoom in the WebView. */
+    shape-rendering: geometricPrecision;
+    text-rendering: geometricPrecision;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  .synchl {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+    pointer-events: none;
+    animation: syncpulse 1.4s ease-out forwards;
+  }
+  @keyframes syncpulse {
+    0% {
+      opacity: 0;
+      transform: scaleX(0.4);
+    }
+    15% {
+      opacity: 0.95;
+      transform: scaleX(1);
+    }
+    100% {
+      opacity: 0;
+    }
   }
   .invert .svgpage {
     filter: invert(1) hue-rotate(180deg);

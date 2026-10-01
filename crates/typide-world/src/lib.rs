@@ -636,6 +636,48 @@ pub fn jump_from_click(
     .flatten()
 }
 
+/// A location in the rendered document, for editor→preview sync.
+#[derive(Debug, Clone, Serialize)]
+pub struct PreviewPosition {
+    /// One-based page number.
+    pub page: usize,
+    /// X offset in points from the page's top-left corner.
+    pub x: f64,
+    /// Y offset in points from the page's top-left corner.
+    pub y: f64,
+}
+
+/// Map a cursor (UTF-16 offset in `path`) to its location in the rendered
+/// document, so the preview can scroll to — and highlight — where you're
+/// editing (forward source→preview sync, ARCHITECTURE.md §13.1). Returns `None`
+/// when the cursor isn't over text that maps to the output.
+pub fn jump_from_cursor(
+    root: &Path,
+    entrypoint: &str,
+    path: &str,
+    overlays: &[Overlay],
+    cursor: usize,
+) -> Option<PreviewPosition> {
+    with_world(root, entrypoint, overlays, |world| {
+        let vp = VirtualPath::new(path).ok()?;
+        let id = FileId::new(RootedPath::new(VirtualRoot::Project, vp));
+        let source = world.source(id).ok()?;
+        let byte = utf16_to_byte(source.text(), cursor);
+        let Warned { output, .. } = typst::compile::<PagedDocument>(world);
+        let doc = output.ok()?;
+        let pos = typst_ide::jump_from_cursor(&doc, &source, byte)
+            .into_iter()
+            .next()?;
+        Some(PreviewPosition {
+            page: pos.page.get(),
+            x: pos.point.x.to_pt(),
+            y: pos.point.y.to_pt(),
+        })
+    })
+    .ok()
+    .flatten()
+}
+
 /// A hover tooltip.
 #[derive(Debug, Clone, Serialize)]
 pub struct Hover {
@@ -758,6 +800,18 @@ mod tests {
         if let Some(t) = t {
             assert_eq!(t.file, "main.typ");
             assert!(t.line >= 1);
+        }
+    }
+
+    #[test]
+    fn jump_maps_a_cursor_to_a_page() {
+        let dir = std::env::temp_dir().join(format!("typide-jmpc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        fixture(&dir, "main.typ", "= Heading Here\n\nSome body text here.\n");
+        // A cursor inside the body text maps to a point on page 1.
+        if let Some(p) = jump_from_cursor(&dir, "main.typ", "main.typ", &[], 20) {
+            assert_eq!(p.page, 1);
+            assert!(p.y >= 0.0 && p.x >= 0.0);
         }
     }
 

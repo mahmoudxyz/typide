@@ -120,6 +120,8 @@ export const ui = $state({
   loading: false,
   closeGuard: false,
   recovery: null as { path: string; savedAt: number }[] | null,
+  syncScroll: true,
+  previewSync: null as { page: number; x: number; y: number; seq: number } | null,
   toast: null as { message: string; kind: "ok" | "error" } | null,
   leftWidth: loadSize("left", 272),
   previewWidth: loadSize("preview", 420),
@@ -612,6 +614,12 @@ function gotoOffset(offset: number) {
   view.focus?.();
 }
 
+// Guards the editor→preview sync briefly after a preview→editor jump so the
+// two don't fight each other.
+let suppressSyncUntil = 0;
+let syncSeq = 0;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** Preview click → jump to the source location that produced it. */
 export async function jumpToClick(page: number, x: number, y: number) {
   if (!data.project) return;
@@ -624,10 +632,34 @@ export async function jumpToClick(page: number, x: number, y: number) {
     y
   );
   if (!target) return;
+  suppressSyncUntil = Date.now() + 600;
   const abs = `${data.project.root}/${target.file}`;
   await openFile(abs);
   // Let the editor swap documents before moving the caret.
   setTimeout(() => gotoOffset(target.offset), 40);
+}
+
+/** Editor caret moved → scroll + highlight the matching spot in the preview
+ *  (forward source→preview sync). Debounced and backend-backed. */
+export function syncPreviewToCursor(offset: number) {
+  if (!ui.syncScroll || !data.project || !ui.activeTab) return;
+  if (Date.now() < suppressSyncUntil) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    if (!data.project) return;
+    try {
+      const pos = await api.jumpFromCursor(
+        data.project.root,
+        data.project.entrypoint,
+        relPath(ui.activeTab),
+        currentOverlays(),
+        offset
+      );
+      if (pos) ui.previewSync = { ...pos, seq: ++syncSeq };
+    } catch {
+      /* best-effort */
+    }
+  }, 180);
 }
 
 export function hoverAt(cursor: number) {

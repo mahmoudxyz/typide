@@ -873,6 +873,25 @@ fn jump_from_click(
     ))
 }
 
+/// Map a cursor (UTF-16 offset in `path`) to a location in the rendered
+/// document, for editor→preview sync.
+#[tauri::command]
+fn jump_from_cursor(
+    root: String,
+    entrypoint: String,
+    path: String,
+    overlays: Vec<typide_world::Overlay>,
+    cursor: usize,
+) -> IpcResult<Option<typide_world::PreviewPosition>> {
+    Ok(typide_world::jump_from_cursor(
+        &PathBuf::from(&root),
+        &entrypoint,
+        &path,
+        &overlays,
+        cursor,
+    ))
+}
+
 /// Hover information at a UTF-16 cursor offset in `path`.
 #[tauri::command]
 fn hover(
@@ -1300,6 +1319,7 @@ pub fn run() {
             hover,
             spellcheck,
             jump_from_click,
+            jump_from_cursor,
             job_cancel,
             toolchain_list,
             toolchain_available,

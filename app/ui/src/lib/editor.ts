@@ -382,7 +382,7 @@ export function createEditor(opts: {
   doc: string;
   lang: string;
   onChange?: (doc: string) => void;
-  onCursor?: (line: number, col: number) => void;
+  onCursor?: (line: number, col: number, offset: number) => void;
   complete?: (cursor: number, explicit: boolean) => Promise<IdeCompletion>;
   hover?: (cursor: number) => Promise<{ text: string; code: boolean } | null>;
   spell?: (text: string) => Promise<Misspelling[]>;
@@ -392,7 +392,7 @@ export function createEditor(opts: {
     if (u.selectionSet || u.docChanged) {
       const pos = u.state.selection.main.head;
       const line = u.state.doc.lineAt(pos);
-      opts.onCursor?.(line.number, pos - line.from + 1);
+      opts.onCursor?.(line.number, pos - line.from + 1, pos);
     }
   });
 

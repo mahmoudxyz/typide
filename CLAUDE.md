@@ -115,11 +115,18 @@ offline; it only ever reads from the cache these steps populate.
   list, and ranks suggestions with **Damerau-Levenshtein** (`spellcheck` command).
   The editor underlines misspellings and shows suggestions + "Add to dictionary"
   on hover (per-viewer dictionary in `localStorage`). Backend offsets are UTF-16.
-- **Source↔preview jump** — `jump_from_click` (typst-ide) maps a preview click
-  (page + point in pt) back to a file + caret offset; the Preview sends pt
-  coordinates and the store opens the file and moves the caret.
+- **Source↔preview jump (two-way)** — backward: `jump_from_click` (typst-ide)
+  maps a preview click (page + point in pt) back to a file + caret offset.
+  Forward: `jump_from_cursor` (typst-ide) maps the editor caret (UTF-16 offset)
+  to a `PreviewPosition {page,x,y}`; the editor's `onCursor` debounces into
+  `syncPreviewToCursor`, which scrolls the Preview to that page/point and pulses
+  a highlight bar. A header toggle (`ui.syncScroll`) turns forward sync off; a
+  short post-click suppression keeps the two directions from fighting.
 - **Preview UX** — **fit-to-width by default**, plus Fit-page / Actual-size /
-  50–200% via a zoom-mode menu; per-page SVG with page numbers; dark-invert.
+  50–200% via a zoom-mode menu; per-page vector SVG (crisp: `shape-rendering`/
+  `text-rendering: geometricPrecision`, no compositing clip) with page numbers;
+  optional dark-invert (a CSS `filter`, so it can soften text on HiDPI — the
+  default non-inverted view is fully vector-crisp).
 
 - **Incremental compile** — a per-project `World` is cached (`with_world` in
   `typide-world`); between compiles overlays are swapped and `FileStore::reset()`

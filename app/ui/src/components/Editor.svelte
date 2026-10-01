@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { createEditor, type EditorHandle } from "../lib/editor";
-  import { ui, getFile, updateContent, setEditorView, completeAt, hoverAt, spellCheck } from "../lib/store.svelte";
+  import { ui, getFile, updateContent, setEditorView, completeAt, hoverAt, spellCheck, syncPreviewToCursor } from "../lib/store.svelte";
 
   let host: HTMLDivElement;
   let handle: EditorHandle | undefined;
@@ -14,8 +14,9 @@
       doc: f?.content ?? "",
       lang: f?.language ?? "typst",
       onChange: (doc) => updateContent(ui.activeTab, doc),
-      onCursor: (line, col) => {
+      onCursor: (line, col, offset) => {
         ui.cursor = { line, col };
+        syncPreviewToCursor(offset);
       },
       complete: (cursor, explicit) => completeAt(cursor, explicit),
       hover: (cursor) => hoverAt(cursor),

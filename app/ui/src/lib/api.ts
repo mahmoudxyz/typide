@@ -91,6 +91,11 @@ export interface JumpTarget {
   offset: number;
   line: number;
 }
+export interface PreviewPosition {
+  page: number;
+  x: number;
+  y: number;
+}
 
 export interface CompilerDiagnostic {
   severity: string;
@@ -369,6 +374,23 @@ export const api = {
   ): Promise<JumpTarget | null> {
     if (!isTauri()) return null;
     return tauriInvoke<JumpTarget | null>("jump_from_click", { root, entrypoint, overlays, page, x, y });
+  },
+
+  async jumpFromCursor(
+    root: string,
+    entrypoint: string,
+    path: string,
+    overlays: Overlay[],
+    cursor: number
+  ): Promise<PreviewPosition | null> {
+    if (!isTauri()) return null;
+    return tauriInvoke<PreviewPosition | null>("jump_from_cursor", {
+      root,
+      entrypoint,
+      path,
+      overlays,
+      cursor,
+    });
   },
 
   async vcsSnapshot(root: string, message: string): Promise<string> {
