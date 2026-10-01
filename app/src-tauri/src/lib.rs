@@ -415,10 +415,38 @@ fn load_project(root: &Path) -> ProjectInfo {
 
 // ── Commands (ARCHITECTURE.md §18.2) ───────────────────────────────────────
 
+/// Resolve the user's home directory from the environment (cross-platform).
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+}
+
+/// Expand a leading `~`, `~/` or `~\` to the user's home directory.
+///
+/// Paths that don't start with `~` are returned unchanged. This guards against
+/// a literal `~` folder being created on disk when the UI passes an unexpanded
+/// home path (e.g. the wizard's default `~/research`). If the home directory
+/// can't be resolved, the input is used verbatim.
+fn expand_tilde(input: &str) -> PathBuf {
+    let trimmed = input.trim();
+    if trimmed == "~" {
+        if let Some(home) = home_dir() {
+            return home;
+        }
+    } else if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+        if let Some(home) = home_dir() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(trimmed)
+}
+
 /// Open a folder as a project; infers config from `typide.toml` when present.
 #[tauri::command]
 fn workspace_open(path: String) -> IpcResult<ProjectInfo> {
-    let root = PathBuf::from(&path);
+    let root = expand_tilde(&path);
     if !root.is_dir() {
         return Err(IpcError::new("path.not_dir", format!("Not a folder: {path}")));
     }
@@ -510,7 +538,7 @@ fn workspace_create(params: CreateParams) -> IpcResult<ProjectInfo> {
     if params.name.trim().is_empty() {
         return Err(IpcError::new("name.empty", "Project name is required"));
     }
-    let root = PathBuf::from(&params.path);
+    let root = expand_tilde(&params.path);
     std::fs::create_dir_all(&root)
         .map_err(|e| IpcError::new("create.mkdir", format!("{}: {e}", params.path)))?;
 
@@ -892,6 +920,23 @@ mod tests {
     }
 
     #[test]
+    fn expand_tilde_resolves_home_and_never_yields_a_literal_tilde() {
+        // Absolute and plain relative paths pass through untouched.
+        let abs = if cfg!(windows) { "C:\\tmp\\proj" } else { "/tmp/proj" };
+        assert_eq!(expand_tilde(abs), PathBuf::from(abs));
+        assert_eq!(expand_tilde("research/thesis"), PathBuf::from("research/thesis"));
+
+        // "~/…" must expand to an absolute home path — never a literal "~".
+        if home_dir().is_some() {
+            let expanded = expand_tilde("~/research");
+            assert!(expanded.is_absolute(), "expected absolute, got {expanded:?}");
+            assert!(expanded.ends_with("research"));
+            assert_ne!(expanded, PathBuf::from("~/research"));
+            assert_eq!(expand_tilde("~"), home_dir().unwrap());
+        }
+    }
+
+    #[test]
     fn scaffold_thesis_writes_real_files() {
         let root = tmp();
         scaffold(&root, &params(&root, "thesis")).unwrap();
@@ -922,7 +967,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("typide-tpl-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let entry = typide_packages::init_template("@preview/charged-ieee:0.1.3", &dir)
+        let entry = typide_packages::init_template("@preview/charged-ieee:0.1.3", &dir, true)
             .expect("init template");
         assert!(dir.join(&entry).exists(), "entrypoint {entry} laid down");
         let result = typide_world::compile(&dir, &entry, &[]);

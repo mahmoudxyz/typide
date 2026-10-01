@@ -2,10 +2,25 @@
   import Icon from "./Icon.svelte";
   import { ui, createProject } from "../lib/store.svelte";
   import { generators, templates, availableTypst, type Generator } from "../lib/mockData";
+  import { api } from "../lib/api";
 
   let gen = $state<Generator>(generators[0]);
   let name = $state("untitled");
   let location = $state("~/research");
+
+  // Resolve a real, absolute default location so projects never land in a
+  // literal "~" folder. The backend also expands "~" defensively.
+  $effect(() => {
+    let cancelled = false;
+    api.homeDir().then((h) => {
+      if (!cancelled && location === "~/research" && h !== "~") {
+        location = `${h}/research`;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
   let typst = $state(availableTypst[0]);
   let mode = $state<"vendor" | "cache">(generators[0].defaultMode);
   let gitInit = $state(true);

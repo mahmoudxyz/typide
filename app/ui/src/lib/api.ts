@@ -4,6 +4,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open as tauriOpen } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { homeDir as tauriHomeDir } from "@tauri-apps/api/path";
 import type { FileNode, ProjectInfo } from "./types";
 import type { ScannedFile } from "./analysis";
 
@@ -227,6 +228,16 @@ function demoFonts(): FontFamily[] {
 
 // ── Public API ─────────────────────────────────────────────────────────────
 export const api = {
+  /// The user's home directory (absolute). Falls back to "~" in a plain browser.
+  async homeDir(): Promise<string> {
+    if (!isTauri()) return "~";
+    try {
+      return (await tauriHomeDir()).replace(/[/\\]$/, "");
+    } catch {
+      return "~";
+    }
+  },
+
   async pickFolder(): Promise<string | null> {
     if (!isTauri()) return DEMO_ROOT;
     const res = await tauriOpen({ directory: true, multiple: false });
