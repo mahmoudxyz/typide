@@ -123,10 +123,23 @@ offline; it only ever reads from the cache these steps populate.
   a highlight bar. A header toggle (`ui.syncScroll`) turns forward sync off; a
   short post-click suppression keeps the two directions from fighting.
 - **Preview UX** — **fit-to-width by default**, plus Fit-page / Actual-size /
-  50–200% via a zoom-mode menu; per-page vector SVG (crisp: `shape-rendering`/
-  `text-rendering: geometricPrecision`, no compositing clip) with page numbers;
-  optional dark-invert (a CSS `filter`, so it can soften text on HiDPI — the
-  default non-inverted view is fully vector-crisp).
+  50–200% via a zoom-mode menu; page numbers; optional dark-invert.
+- **High-fidelity render (HD)** — by default each page is rasterised to PNG at
+  the display's pixel density (`render_png` → `typide_world::render_page_png` via
+  `typst-render`, `pixel_per_pt = pageWidthPx × devicePixelRatio ÷ pageWidthPt`),
+  which matches a browser canvas and is crisper than scaled SVG in WebKitGTK. The
+  command returns raw bytes (`tauri::ipc::Response` → `ArrayBuffer` → blob URL).
+  Per-page, debounced, re-rendered on zoom/width change, superseded renders are
+  cancelled by token, capped at 80 pages. SVG shows instantly as the fallback and
+  an **HD/SVG toggle** switches to pure vector (infinite-zoom). Browser/demo uses
+  SVG only.
+- **Project file management** — the tree is a real explorer: right-click (or the
+  panel toolbar / `F2`) for New File, New Folder, Cut, Copy, Paste, Duplicate,
+  Rename, Copy (Relative) Path, Reveal in File Manager, Delete. Backed by
+  `fs_create_file/create_dir/rename/delete/write_bytes/import/reveal`; pasting or
+  dropping real files/images writes bytes, file-manager copies arrive as a URI
+  list and are copied in. New-item name defaults are de-duplicated so repeated
+  "New File" doesn't collide. Open tabs/buffers follow renames and moves.
 
 - **Incremental compile** — a per-project `World` is cached (`with_world` in
   `typide-world`); between compiles overlays are swapped and `FileStore::reset()`

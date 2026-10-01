@@ -393,6 +393,18 @@ export const api = {
     });
   },
 
+  /// Render a page to PNG bytes at `pixelPerPt` (ArrayBuffer in Tauri).
+  async renderPng(
+    root: string,
+    entrypoint: string,
+    overlays: Overlay[],
+    page: number,
+    pixelPerPt: number
+  ): Promise<ArrayBuffer | null> {
+    if (!isTauri()) return null;
+    return tauriInvoke<ArrayBuffer>("render_png", { root, entrypoint, overlays, page, pixelPerPt });
+  },
+
   async vcsSnapshot(root: string, message: string): Promise<string> {
     if (!isTauri()) return "demo";
     return tauriInvoke<string>("vcs_snapshot", { root, message });
@@ -513,5 +525,9 @@ export const api = {
   async fsImport(destDir: string, sources: string[]): Promise<string[]> {
     if (!isTauri()) return [];
     return tauriInvoke<string[]>("fs_import", { destDir, sources });
+  },
+  async fsReveal(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fs_reveal", { path });
   },
 };

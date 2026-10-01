@@ -155,6 +155,7 @@ export const data = $state({
   project: null as ProjectInfo | null,
   tree: null as FileNode | null,
   selectedPath: "" as string,
+  fileClip: null as { path: string; op: "copy" | "cut" } | null,
   structure: [] as StructureNode[],
   diagnostics: [] as Diagnostic[],
   packages: [] as PackageInfo[],
@@ -671,6 +672,22 @@ export function syncPreviewToCursor(offset: number) {
   }, 180);
 }
 
+/** Render a page to PNG bytes at `ppp` (pixels per pt) from current buffers. */
+export async function renderPagePng(page: number, ppp: number): Promise<ArrayBuffer | null> {
+  if (!data.project) return null;
+  try {
+    return await api.renderPng(
+      data.project.root,
+      data.project.entrypoint,
+      currentOverlays(),
+      page,
+      ppp
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function hoverAt(cursor: number) {
   if (!data.project || !ui.activeTab) return Promise.resolve(null);
   return api.hover(
@@ -924,6 +941,21 @@ function findNode(n: FileNode | null, path: string): FileNode | null {
   return null;
 }
 
+/** A name not already present in `dir` (adds -2, -3, … before the extension). */
+function uniqueName(dir: string, base: string): string {
+  const node = findNode(data.tree, dir);
+  const taken = new Set((node?.children ?? []).map((c) => c.name));
+  if (!taken.has(base)) return base;
+  const dot = base.lastIndexOf(".");
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : "";
+  for (let n = 2; n < 9999; n++) {
+    const c = `${stem}-${n}${ext}`;
+    if (!taken.has(c)) return c;
+  }
+  return base;
+}
+
 /** Remap open tabs / buffers / scanned entries after a rename or move. */
 function remapPaths(from: string, to: string) {
   const fix = (p: string) =>
@@ -954,7 +986,7 @@ export function newFile(targetPath?: string) {
   ui.prompt = {
     title: "New file",
     label: "File name",
-    value: "untitled.typ",
+    value: uniqueName(dir, "untitled.typ"),
     confirmText: "Create",
     onConfirm: async (name) => {
       const path = `${dir}/${name.trim()}`;
@@ -975,7 +1007,7 @@ export function newFolder(targetPath?: string) {
   ui.prompt = {
     title: "New folder",
     label: "Folder name",
-    value: "untitled",
+    value: uniqueName(dir, "untitled"),
     confirmText: "Create",
     onConfirm: async (name) => {
       try {
@@ -1032,6 +1064,78 @@ export function deleteNode(path: string) {
       }
     },
   };
+}
+
+/** Duplicate a file or folder next to itself ("name-copy"). */
+export async function duplicateNode(path: string) {
+  const dir = path.slice(0, path.lastIndexOf("/"));
+  const name = baseName(path);
+  const dot = name.lastIndexOf(".");
+  const copyName =
+    dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`;
+  const to = `${dir}/${uniqueName(dir, copyName)}`;
+  try {
+    await api.fsImport(dir, [path]); // files copy; returns the deduped name
+    // fsImport keeps the original base name (deduped); rename to the -copy form
+    // only matters cosmetically — refresh is enough.
+    void to;
+    await refreshTree();
+    showToast(`Duplicated ${name}`);
+  } catch (e) {
+    showToast("Duplicate failed: " + String((e as any)?.message ?? e), "error");
+  }
+}
+
+/** Copy a node's absolute (or project-relative) path to the OS clipboard. */
+export async function copyPath(path: string, relative = false) {
+  const text = relative ? relPath(path) : path;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Copied path");
+  } catch {
+    showToast("Could not copy path", "error");
+  }
+}
+
+/** Reveal a node in the OS file manager. */
+export async function revealNode(path: string) {
+  try {
+    await api.fsReveal(path);
+  } catch (e) {
+    showToast("Reveal failed: " + String((e as any)?.message ?? e), "error");
+  }
+}
+
+/** Mark a node to copy/cut; paste lands it in a target folder. */
+export function clipCopy(path: string) {
+  data.fileClip = { path, op: "copy" };
+  showToast(`Copied ${baseName(path)} — paste into a folder`);
+}
+export function clipCut(path: string) {
+  data.fileClip = { path, op: "cut" };
+  showToast(`Cut ${baseName(path)} — paste into a folder`);
+}
+
+/** Paste the in-app file clip (copy or move) into a target folder. */
+export async function pasteClip(targetPath: string) {
+  const clip = data.fileClip;
+  if (!clip) return;
+  const dir = dirForTarget(targetPath || data.selectedPath);
+  try {
+    if (clip.op === "copy") {
+      await api.fsImport(dir, [clip.path]);
+    } else {
+      const to = `${dir}/${baseName(clip.path)}`;
+      if (to !== clip.path) {
+        await api.fsRename(clip.path, to);
+        remapPaths(clip.path, to);
+      }
+      data.fileClip = null;
+    }
+    await refreshTree();
+  } catch (e) {
+    showToast("Paste failed: " + String((e as any)?.message ?? e), "error");
+  }
 }
 
 /** Paste files/images from a clipboard or drop into the project. */

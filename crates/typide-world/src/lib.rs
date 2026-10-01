@@ -678,6 +678,32 @@ pub fn jump_from_cursor(
     .flatten()
 }
 
+/// Render one page (1-based) to a PNG at `pixel_per_pt` pixels per typographic
+/// point, for a high-fidelity raster preview. Rendering at the display's exact
+/// pixel density (CSS px × devicePixelRatio) gives crisp output that matches a
+/// browser canvas and avoids the WebView's softer scaled-SVG text. Returns
+/// `None` if the page doesn't exist or compilation fails.
+pub fn render_page_png(
+    root: &Path,
+    entrypoint: &str,
+    overlays: &[Overlay],
+    page: usize,
+    pixel_per_pt: f64,
+) -> Option<Vec<u8>> {
+    with_world(root, entrypoint, overlays, |world| {
+        let Warned { output, .. } = typst::compile::<PagedDocument>(world);
+        let doc = output.ok()?;
+        let p = doc.pages().get(page.saturating_sub(1))?;
+        let opts = typst_render::RenderOptions {
+            pixel_per_pt: typst::utils::Scalar::new(pixel_per_pt.clamp(1.0, 6.0)),
+            render_bleed: false,
+        };
+        typst_render::render(p, &opts).encode_png().ok()
+    })
+    .ok()
+    .flatten()
+}
+
 /// A hover tooltip.
 #[derive(Debug, Clone, Serialize)]
 pub struct Hover {
@@ -801,6 +827,15 @@ mod tests {
             assert_eq!(t.file, "main.typ");
             assert!(t.line >= 1);
         }
+    }
+
+    #[test]
+    fn renders_a_page_to_png() {
+        let dir = std::env::temp_dir().join(format!("typide-png-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        fixture(&dir, "main.typ", "= Title\n\nBody text.\n");
+        let png = render_page_png(&dir, "main.typ", &[], 1, 2.0).expect("render page");
+        assert!(png.len() > 8 && &png[1..4] == b"PNG", "should be a PNG, got {} bytes", png.len());
     }
 
     #[test]

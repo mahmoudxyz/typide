@@ -681,6 +681,31 @@ fn fs_import(dest_dir: String, sources: Vec<String>) -> IpcResult<Vec<String>> {
     Ok(written)
 }
 
+/// Open a file's containing folder (or the folder itself) in the OS file
+/// manager. Args are passed as an array — never through a shell (§20).
+#[tauri::command]
+fn fs_reveal(path: String) -> IpcResult<()> {
+    let p = Path::new(&path);
+    let target = if p.is_dir() {
+        p.to_path_buf()
+    } else {
+        p.parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| p.to_path_buf())
+    };
+    #[cfg(target_os = "linux")]
+    let program = "xdg-open";
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    std::process::Command::new(program)
+        .arg(target.as_os_str())
+        .spawn()
+        .map_err(|e| IpcError::new("fs.reveal", format!("{}: {e}", target.display())))?;
+    Ok(())
+}
+
 /// Minimal `%XX` percent-decoding for `file://` URIs (spaces etc.).
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
@@ -1022,6 +1047,27 @@ fn jump_from_cursor(
         &overlays,
         cursor,
     ))
+}
+
+/// Render a page (1-based) to a PNG at `pixelPerPt` for a high-fidelity raster
+/// preview. Returns the raw bytes (an ArrayBuffer on the JS side).
+#[tauri::command]
+fn render_png(
+    root: String,
+    entrypoint: String,
+    overlays: Vec<typide_world::Overlay>,
+    page: usize,
+    pixel_per_pt: f64,
+) -> IpcResult<tauri::ipc::Response> {
+    let bytes = typide_world::render_page_png(
+        &PathBuf::from(&root),
+        &entrypoint,
+        &overlays,
+        page,
+        pixel_per_pt,
+    )
+    .ok_or_else(|| IpcError::new("render.png", "could not render page"))?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Hover information at a UTF-16 cursor offset in `path`.
@@ -1480,6 +1526,7 @@ pub fn run() {
             spellcheck,
             jump_from_click,
             jump_from_cursor,
+            render_png,
             job_cancel,
             toolchain_list,
             toolchain_available,
@@ -1503,6 +1550,7 @@ pub fn run() {
             fs_delete,
             fs_write_bytes,
             fs_import,
+            fs_reveal,
             recovery_save,
             recovery_scan,
             recovery_read,

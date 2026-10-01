@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import Icon from "./Icon.svelte";
-  import { ui, data, getFile, jumpToClick } from "../lib/store.svelte";
+  import { ui, data, getFile, jumpToClick, renderPagePng } from "../lib/store.svelte";
+  import { isTauri } from "../lib/api";
 
   type Mode = "fit-width" | "fit-page" | "custom";
   let mode = $state<Mode>("fit-width");
@@ -14,6 +16,15 @@
   // Editor→preview sync highlight: which page + vertical fraction to pulse.
   let hl = $state<{ page: number; frac: number } | null>(null);
   let hlTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // High-fidelity raster: render each page to a PNG at the display's pixel
+  // density (crisper than scaled SVG in the WebView). SVG shows instantly as a
+  // fallback; the raster swaps in when ready. Off → pure vector (infinite zoom).
+  const RASTER_PAGE_LIMIT = 80;
+  let raster = $state(isTauri());
+  let pageUrls = $state<(string | null)[]>([]);
+  let rasterToken = 0;
+  let rasterTimer: ReturnType<typeof setTimeout> | null = null;
 
   const compiled = $derived(data.compiled);
   const svgPages = $derived(compiled?.pages ?? []);
@@ -93,6 +104,51 @@
     if (hlTimer) clearTimeout(hlTimer);
     hlTimer = setTimeout(() => (hl = null), 1400);
   });
+
+  // Render each page to a crisp PNG at the display's pixel density, debounced.
+  // Re-runs when the document, the page width (zoom), or the toggle changes.
+  $effect(() => {
+    const n = svgPages.length;
+    const wpx = pageWpx; // depend on zoom/width
+    const on = raster;
+    void compiled?.compile_ms; // depend on each fresh compile
+    if (rasterTimer) clearTimeout(rasterTimer);
+    if (!on || !isTauri() || n === 0 || n > RASTER_PAGE_LIMIT) {
+      clearRaster();
+      return;
+    }
+    rasterTimer = setTimeout(() => renderAllPages(wpx), 240);
+  });
+
+  function clearRaster() {
+    for (const u of pageUrls) if (u) URL.revokeObjectURL(u);
+    pageUrls = [];
+  }
+
+  async function renderAllPages(wpx: number) {
+    const token = ++rasterToken;
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const ppp = Math.max(1, (wpx * dpr) / dims.w); // pixels per pt at display size
+    const n = svgPages.length;
+    const next: (string | null)[] = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      const buf = await renderPagePng(i + 1, ppp);
+      if (token !== rasterToken) {
+        for (const u of next) if (u) URL.revokeObjectURL(u);
+        return; // superseded by a newer render
+      }
+      if (buf) next[i] = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
+    }
+    const old = pageUrls;
+    pageUrls = next;
+    for (const u of old) if (u) URL.revokeObjectURL(u);
+  }
+
+  onDestroy(() => {
+    if (rasterTimer) clearTimeout(rasterTimer);
+    if (hlTimer) clearTimeout(hlTimer);
+    clearRaster();
+  });
 </script>
 
 <section class="preview" style="width: {ui.previewWidth}px">
@@ -128,6 +184,16 @@
     >
       <Icon name="link" size={14} />
     </button>
+    {#if isTauri()}
+      <button
+        class="tgl"
+        class:on={raster}
+        title={raster ? "High-fidelity render (HD): on — click for crisp vector" : "Vector render (SVG) — click for HD raster"}
+        onclick={() => (raster = !raster)}
+      >
+        <Icon name="eye" size={14} /><span class="tlabel">{raster ? "HD" : "SVG"}</span>
+      </button>
+    {/if}
     <button class="tgl" class:on={invert} title="Invert pages" onclick={() => (invert = !invert)}>
       <Icon name="moon" size={14} />
     </button>
@@ -146,8 +212,12 @@
             tabindex="-1"
             title="Click to jump to source"
           >
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-            {@html svg}
+            {#if raster && pageUrls[i]}
+              <img class="rasterimg" src={pageUrls[i]} alt="Page {i + 1}" draggable="false" />
+            {:else}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+              {@html svg}
+            {/if}
             {#if hl && hl.page === i + 1}
               <span class="synchl" style="top: {hl.frac * 100}%"></span>
             {/if}
@@ -300,8 +370,9 @@
     margin: 4px 2px;
   }
   .tgl {
-    width: 26px;
+    min-width: 26px;
     height: 26px;
+    padding: 0 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -345,6 +416,17 @@
     shape-rendering: geometricPrecision;
     text-rendering: geometricPrecision;
     image-rendering: -webkit-optimize-contrast;
+  }
+  .rasterimg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .tlabel {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    margin-left: 3px;
   }
   .synchl {
     position: absolute;

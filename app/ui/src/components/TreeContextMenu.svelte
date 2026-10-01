@@ -1,9 +1,23 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
-  import { ui, data, newFile, newFolder, renameNode, deleteNode } from "../lib/store.svelte";
+  import {
+    ui,
+    data,
+    newFile,
+    newFolder,
+    renameNode,
+    deleteNode,
+    duplicateNode,
+    clipCopy,
+    clipCut,
+    pasteClip,
+    copyPath,
+    revealNode,
+  } from "../lib/store.svelte";
 
   const m = $derived(ui.treeMenu);
   const isRoot = $derived(!!m && (!m.path || m.path === data.project?.root));
+  const hasClip = $derived(!!data.fileClip);
 
   function close() {
     ui.treeMenu = null;
@@ -24,11 +38,42 @@
     <button role="menuitem" onclick={() => run(() => newFolder(m.path))}>
       <Icon name="folder" size={14} /> New Folder
     </button>
+    {#if hasClip}
+      <button role="menuitem" onclick={() => run(() => pasteClip(m.path))}>
+        <Icon name="download" size={14} /> Paste
+      </button>
+    {/if}
+
     {#if m.path && !isRoot}
       <div class="div"></div>
+      <button role="menuitem" onclick={() => run(() => clipCut(m.path))}>
+        <Icon name="scissors" size={14} /> Cut
+      </button>
+      <button role="menuitem" onclick={() => run(() => clipCopy(m.path))}>
+        <Icon name="copy" size={14} /> Copy
+      </button>
+      <button role="menuitem" onclick={() => run(() => duplicateNode(m.path))}>
+        <Icon name="layers" size={14} /> Duplicate
+      </button>
       <button role="menuitem" onclick={() => run(() => renameNode(m.path))}>
         <Icon name="text" size={14} /> Rename…
       </button>
+
+      <div class="div"></div>
+      <button role="menuitem" onclick={() => run(() => copyPath(m.path, false))}>
+        <Icon name="link" size={14} /> Copy Path
+      </button>
+      <button role="menuitem" onclick={() => run(() => copyPath(m.path, true))}>
+        <Icon name="link" size={14} /> Copy Relative Path
+      </button>
+    {/if}
+
+    <button role="menuitem" onclick={() => run(() => revealNode(m.path || data.project?.root || ""))}>
+      <Icon name="folder-open" size={14} /> Reveal in File Manager
+    </button>
+
+    {#if m.path && !isRoot}
+      <div class="div"></div>
       <button role="menuitem" class="danger" onclick={() => run(() => deleteNode(m.path))}>
         <Icon name="x" size={14} /> Delete…
       </button>

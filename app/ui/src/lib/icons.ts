@@ -3,6 +3,8 @@ export const icons: Record<string, string> = {
   folder: `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>`,
   "folder-open": `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2"/><path d="M3 9l1.5 8a2 2 0 0 0 2 1.6h11a2 2 0 0 0 2-1.6L21 9z"/>`,
   file: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>`,
+  copy: `<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>`,
+  scissors: `<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 7.5L20 16"/><path d="M8.5 16.5L20 8"/>`,
   "file-code": `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10 12l-2 2 2 2"/><path d="M14 12l2 2-2 2"/>`,
   chevron: `<path d="M9 6l6 6-6 6"/>`,
   structure: `<path d="M4 5h16"/><path d="M8 12h12"/><path d="M12 19h8"/><circle cx="4.5" cy="12" r="0.5"/>`,
