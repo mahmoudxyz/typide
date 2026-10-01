@@ -156,6 +156,7 @@ export const data = $state({
   tree: null as FileNode | null,
   selectedPath: "" as string,
   fileClip: null as { path: string; op: "copy" | "cut" } | null,
+  fontDirs: [] as string[],
   structure: [] as StructureNode[],
   diagnostics: [] as Diagnostic[],
   packages: [] as PackageInfo[],
@@ -529,14 +530,86 @@ export async function restoreSnapshot(commit: string) {
   }
 }
 
-/** Load the font database for the Fonts panel. */
-export async function loadFonts() {
-  if (data.fonts.length) return;
+/** Load persisted global font folders and push them to the compiler. Called at
+ *  startup and whenever the set changes. The project's own `fonts/` folder is
+ *  always scanned by the backend in addition. */
+export async function initFontDirs() {
   try {
-    data.fonts = await api.fontsList();
+    const raw = localStorage.getItem("typide.fontDirs");
+    data.fontDirs = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    data.fontDirs = [];
+  }
+  try {
+    await api.fontsSetDirs(data.fontDirs);
+  } catch (e) {
+    console.error("fonts_set_dirs failed", e);
+  }
+}
+
+function persistFontDirs() {
+  try {
+    localStorage.setItem("typide.fontDirs", JSON.stringify(data.fontDirs));
+  } catch {}
+}
+
+/** Load (or reload) the font database for the Fonts panel. */
+export async function loadFonts(force = false) {
+  if (data.fonts.length && !force) return;
+  try {
+    data.fonts = await api.fontsList(data.project?.root);
   } catch (e) {
     console.error("fonts_list failed", e);
   }
+}
+
+/** Add a global font folder (used across all projects), persist, apply, reload. */
+export async function addFontFolder() {
+  const dir = await api.pickFolder();
+  if (!dir || data.fontDirs.includes(dir)) return;
+  data.fontDirs = [...data.fontDirs, dir];
+  persistFontDirs();
+  await api.fontsSetDirs(data.fontDirs);
+  await loadFonts(true);
+  scheduleCompile();
+  showToast("Added font folder");
+}
+
+/** Remove a global font folder. */
+export async function removeFontDir(dir: string) {
+  data.fontDirs = data.fontDirs.filter((d) => d !== dir);
+  persistFontDirs();
+  await api.fontsSetDirs(data.fontDirs);
+  await loadFonts(true);
+  scheduleCompile();
+}
+
+/** Import font files into the current project's `fonts/` folder. */
+export async function addFontFiles() {
+  if (!data.project) {
+    showToast("Open a project first", "error");
+    return;
+  }
+  const files = await api.pickFonts();
+  if (!files.length) return;
+  try {
+    await api.fsImport(`${data.project.root}/fonts`, files);
+    await refreshTree();
+    await api.fontsRescan();
+    await loadFonts(true);
+    scheduleCompile();
+    showToast(`Added ${files.length} font${files.length === 1 ? "" : "s"} to the project`);
+  } catch (e) {
+    showToast("Add font failed: " + String((e as any)?.message ?? e), "error");
+  }
+}
+
+/** Rescan fonts (after external changes) and recompile. */
+export async function rescanFonts() {
+  await api.fontsRescan();
+  await loadFonts(true);
+  scheduleCompile();
+  showToast("Rescanned fonts");
 }
 
 export async function searchPackages(query: string) {
@@ -772,6 +845,7 @@ export async function loadProject(path: string) {
     ui.activeTool = "project";
     runCompile(); // initial preview (async, non-blocking)
     scanRecovery(); // offer any unsaved work from a previous session
+    if (data.fonts.length) void loadFonts(true); // refresh for this project's fonts/
   } finally {
     ui.loading = false;
   }

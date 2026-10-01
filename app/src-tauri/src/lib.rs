@@ -953,10 +953,27 @@ fn packages_refresh_index(online: bool) -> IpcResult<usize> {
     typide_packages::refresh_index(online).map_err(|e| IpcError::new("packages.index", e))
 }
 
-/// List every font family available to the compiler (embedded + system).
+/// List every font family available to the compiler (embedded + system + the
+/// user's font dirs + this project's `fonts/`).
 #[tauri::command]
-fn fonts_list() -> IpcResult<Vec<typide_world::FontFamily>> {
-    Ok(typide_world::list_fonts())
+fn fonts_list(root: Option<String>) -> IpcResult<Vec<typide_world::FontFamily>> {
+    let root = root.map(PathBuf::from);
+    Ok(typide_world::list_fonts(root.as_deref()))
+}
+
+/// Set the user's extra font directories (scanned everywhere). The project's
+/// own `fonts/` folder is always scanned in addition.
+#[tauri::command]
+fn fonts_set_dirs(dirs: Vec<String>) -> IpcResult<()> {
+    typide_world::set_font_dirs(dirs.into_iter().map(PathBuf::from).collect());
+    Ok(())
+}
+
+/// Rescan fonts (after adding/removing files in a watched directory).
+#[tauri::command]
+fn fonts_rescan() -> IpcResult<()> {
+    typide_world::rescan_fonts();
+    Ok(())
 }
 
 /// Compile and export the project to a PDF at `output` (relative to root).
@@ -1520,6 +1537,8 @@ pub fn run() {
             packages_search,
             packages_refresh_index,
             fonts_list,
+            fonts_set_dirs,
+            fonts_rescan,
             export_pdf,
             complete,
             hover,

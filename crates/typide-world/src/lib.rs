@@ -160,6 +160,12 @@ impl TypideWorld {
         fonts.extend(fonts::embedded());
         if !lite {
             fonts.extend(fonts::system());
+            // User font folders + TYPST_FONT_PATHS + this project's `fonts/`.
+            for dir in extra_font_dirs(Some(root)) {
+                if dir.is_dir() {
+                    fonts.extend(fonts::scan(&dir));
+                }
+            }
         }
 
         let overrides: Overrides = Arc::new(Mutex::new(build_overrides(overlays)));
@@ -201,6 +207,46 @@ struct Cached {
 fn world_cache() -> &'static Mutex<Option<Cached>> {
     static C: OnceLock<Mutex<Option<Cached>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(None))
+}
+
+/// Drop the cached world so the next compile rebuilds it (e.g. after the font
+/// set changes).
+fn clear_world_cache() {
+    *world_cache().lock().unwrap_or_else(|p| p.into_inner()) = None;
+}
+
+/// User-configured extra font directories (scanned in addition to embedded +
+/// system + each project's own `fonts/`).
+fn font_dirs() -> &'static Mutex<Vec<PathBuf>> {
+    static D: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+    D.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Replace the user's extra font directories and invalidate the cached world so
+/// the next compile/list picks up the new fonts.
+pub fn set_font_dirs(dirs: Vec<PathBuf>) {
+    *font_dirs().lock().unwrap_or_else(|p| p.into_inner()) = dirs;
+    clear_world_cache();
+}
+
+/// Rescan fonts on the next compile/list (e.g. after dropping a file into a
+/// watched directory). Cheap: just drops the cached world.
+pub fn rescan_fonts() {
+    clear_world_cache();
+}
+
+/// All extra font directories to scan: user dirs + `TYPST_FONT_PATHS` + the
+/// project's own `fonts/` folder (when a root is known). Non-existent paths are
+/// kept here and filtered at scan time.
+fn extra_font_dirs(root: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = font_dirs().lock().map(|g| g.clone()).unwrap_or_default();
+    if let Ok(paths) = std::env::var("TYPST_FONT_PATHS") {
+        dirs.extend(std::env::split_paths(&paths));
+    }
+    if let Some(r) = root {
+        dirs.push(r.join("fonts"));
+    }
+    dirs
 }
 
 /// Run `f` against the cached world for `(root, entrypoint)`, rebuilding it only
@@ -307,12 +353,18 @@ pub struct FontFamily {
     pub variable: bool,
 }
 
-/// List every font family available (embedded + system).
-pub fn list_fonts() -> Vec<FontFamily> {
+/// List every font family available: embedded + system + the user's extra font
+/// dirs + the given project's `fonts/` folder (when `root` is provided).
+pub fn list_fonts(root: Option<&Path>) -> Vec<FontFamily> {
     use std::collections::BTreeSet;
     let mut fonts = FontStore::new();
     fonts.extend(fonts::embedded());
     fonts.extend(fonts::system());
+    for dir in extra_font_dirs(root) {
+        if dir.is_dir() {
+            fonts.extend(fonts::scan(&dir));
+        }
+    }
     let book = fonts.book();
 
     let mut families: Vec<FontFamily> = Vec::new();
@@ -827,6 +879,17 @@ mod tests {
             assert_eq!(t.file, "main.typ");
             assert!(t.line >= 1);
         }
+    }
+
+    #[test]
+    fn lists_embedded_fonts() {
+        let families = list_fonts(None);
+        assert!(!families.is_empty(), "embedded fonts should be listed");
+        assert!(
+            families.iter().any(|f| f.name.to_lowercase().contains("computer modern")
+                || f.name.to_lowercase().contains("libertinus")),
+            "expected a bundled academic font family"
+        );
     }
 
     #[test]

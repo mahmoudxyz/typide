@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ui, applyTheme, persistSize, saveAndCompile, loadProject, completeFirstRun, initJobs, initPolicy, initCloseGuard, initRecoveryAutosave } from "./lib/store.svelte";
+  import { ui, applyTheme, persistSize, saveAndCompile, loadProject, completeFirstRun, initJobs, initPolicy, initCloseGuard, initRecoveryAutosave, initFontDirs } from "./lib/store.svelte";
   import Resizer from "./components/Resizer.svelte";
   import TitleBar from "./components/TitleBar.svelte";
   import ActivityBar from "./components/ActivityBar.svelte";
@@ -30,6 +30,7 @@
     initJobs();
     initCloseGuard();
     initRecoveryAutosave();
+    initFontDirs();
     // Dev convenience: open the demo project directly with ?demo in the URL.
     if (typeof location !== "undefined" && new URLSearchParams(location.search).has("demo")) {
       const params = new URLSearchParams(location.search);

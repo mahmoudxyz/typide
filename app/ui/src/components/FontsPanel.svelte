@@ -1,6 +1,13 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
-  import { data, loadFonts } from "../lib/store.svelte";
+  import {
+    data,
+    loadFonts,
+    addFontFolder,
+    addFontFiles,
+    removeFontDir,
+    rescanFonts,
+  } from "../lib/store.svelte";
 
   let query = $state("");
   $effect(() => {
@@ -10,14 +17,37 @@
   const filtered = $derived(
     data.fonts.filter((f) => f.name.toLowerCase().includes(query.toLowerCase()))
   );
+  const shortDir = (d: string) => d.split("/").filter(Boolean).slice(-2).join("/");
 </script>
 
 <div class="wrap">
+  <div class="toolbar">
+    <button onclick={addFontFiles} title="Copy font files into this project's fonts/ folder">
+      <Icon name="download" size={13} /> Add to project
+    </button>
+    <button onclick={addFontFolder} title="Add a global font folder (all projects)">
+      <Icon name="folder" size={13} /> Add folder
+    </button>
+    <button class="icononly" onclick={rescanFonts} title="Rescan fonts"><Icon name="refresh" size={13} /></button>
+  </div>
+
+  {#if data.fontDirs.length > 0}
+    <div class="dirs">
+      {#each data.fontDirs as dir (dir)}
+        <div class="dir" title={dir}>
+          <Icon name="folder" size={12} />
+          <span class="dpath">{shortDir(dir)}</span>
+          <button class="rm" title="Remove folder" onclick={() => removeFontDir(dir)}><Icon name="x" size={11} /></button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <div class="search">
     <Icon name="search" size={14} />
     <input placeholder="Filter fonts…" bind:value={query} />
   </div>
-  <div class="count">{data.fonts.length} families available</div>
+  <div class="count">{data.fonts.length} families · embedded + system + your folders + project <code>fonts/</code></div>
 
   {#if data.fonts.length === 0}
     <div class="none"><span class="spin"></span> loading font database…</div>
@@ -44,6 +74,64 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .toolbar {
+    display: flex;
+    gap: 6px;
+  }
+  .toolbar button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 9px;
+    font-size: 11.5px;
+    color: var(--fg-1);
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+  }
+  .toolbar button:hover {
+    background: var(--bg-4);
+  }
+  .toolbar .icononly {
+    padding: 0 8px;
+    margin-left: auto;
+    color: var(--fg-3);
+  }
+  .dirs {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .dir {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 7px;
+    font-size: 11px;
+    color: var(--fg-2);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .dpath {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .dir .rm {
+    color: var(--fg-3);
+    display: inline-flex;
+  }
+  .dir .rm:hover {
+    color: var(--error);
+  }
+  .count code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.92em;
   }
   .search {
     display: flex;

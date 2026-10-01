@@ -249,6 +249,17 @@ export const api = {
     return (res as string) ?? null;
   },
 
+  async pickFonts(): Promise<string[]> {
+    if (!isTauri()) return [];
+    const res = await tauriOpen({
+      directory: false,
+      multiple: true,
+      filters: [{ name: "Fonts", extensions: ["ttf", "otf", "ttc", "woff2"] }],
+    });
+    if (!res) return [];
+    return Array.isArray(res) ? (res as string[]) : [res as string];
+  },
+
   async pickArchive(): Promise<string | null> {
     if (!isTauri()) return null;
     const res = await tauriOpen({
@@ -307,9 +318,17 @@ export const api = {
     return tauriInvoke<number>("packages_refresh_index", { online });
   },
 
-  async fontsList(): Promise<FontFamily[]> {
+  async fontsList(root?: string): Promise<FontFamily[]> {
     if (!isTauri()) return demoFonts();
-    return tauriInvoke<FontFamily[]>("fonts_list", {});
+    return tauriInvoke<FontFamily[]>("fonts_list", { root: root ?? null });
+  },
+  async fontsSetDirs(dirs: string[]): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fonts_set_dirs", { dirs });
+  },
+  async fontsRescan(): Promise<void> {
+    if (!isTauri()) return;
+    return tauriInvoke<void>("fonts_rescan", {});
   },
 
   async readTree(path: string): Promise<FileNode> {

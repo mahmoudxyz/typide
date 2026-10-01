@@ -95,8 +95,16 @@ offline; it only ever reads from the cache these steps populate.
 - **Make offline-ready** — `packages_make_offline_ready` resolves everything
   (transitively), copies it into `vendor/packages/`, hashes each package
   (SHA-256) and writes `typide.lock`. Wired to the Packages panel.
-- **Fonts panel** — `fonts_list` (`typide_world::list_fonts`) returns the real
-  embedded+system font families; `FontsPanel.svelte` renders each in its own face.
+- **Fonts panel (dynamic font discovery)** — fonts come from **embedded +
+  system + `TYPST_FONT_PATHS` + user-added global folders + each project's own
+  `fonts/`**. `typide_world` keeps the extra dirs in a global list
+  (`set_font_dirs`, which clears the cached world) and scans them in `build` and
+  `list_fonts(root)`; `rescan_fonts` drops the cache to pick up new files.
+  Commands: `fonts_list(root)`, `fonts_set_dirs`, `fonts_rescan`. The panel
+  (`FontsPanel.svelte`) lists every family in its own face and offers **Add to
+  project** (copies font files into `<root>/fonts/`), **Add folder** (a global
+  dir, persisted in `localStorage`, pushed via `initFontDirs`), and **Rescan**.
+  Changing fonts invalidates the world and recompiles, so new fonts appear live.
 - **Network policy** — every network call takes an `online` flag derived from
   `ui.networkMode` (`online()` in the store); offline fails closed in
   `typide_net::obtain_package`. `NetworkMode::Ask` currently behaves as online
