@@ -1,0 +1,23 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# Node / frontend
+app/ui/node_modules
+app/ui/dist
+app/ui/dist-*
+app/ui/.vite
+
+# Tauri
+app/src-tauri/target
+app/src-tauri/gen
+
+# Local caches / data
+*.sqlite
+/typide-data
+.DS_Store
+
+# Stray dev scaffolding: projects accidentally created under a literal "~"
+# (an unexpanded home path) while running `cargo tauri dev`. Not source.
+app/src-tauri/~/

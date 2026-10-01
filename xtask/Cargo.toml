@@ -1,0 +1,9 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Repository automation: dependency-rule checks, CI helpers, toolchain packing."
+publish = false
+
+[dependencies]

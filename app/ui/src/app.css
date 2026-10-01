@@ -1,0 +1,175 @@
+/* ===========================================================================
+   Typide design system — theme tokens (ARCHITECTURE.md §18 frontend).
+   Default: dark. Toggle by setting <html data-theme="light|dark">.
+   =========================================================================== */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces (back → front) */
+  --bg-0: #16181d; /* window / gutters */
+  --bg-1: #1c1f26; /* tool windows */
+  --bg-2: #21252e; /* editor */
+  --bg-3: #272b35; /* panels, tabs */
+  --bg-4: #2f3440; /* hover */
+  --bg-inset: #14161a;
+
+  --border: #333844;
+  --border-strong: #414958;
+
+  /* Text */
+  --fg-0: #e6e8ee; /* primary */
+  --fg-1: #b6bcc9; /* secondary */
+  --fg-2: #8b93a3; /* muted */
+  --fg-3: #626b7d; /* faint */
+
+  /* Brand — Typst-adjacent teal/indigo, our own identity */
+  --accent: #5b8def;
+  --accent-2: #33c2b0;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(91, 141, 239, 0.16);
+
+  /* Semantic */
+  --error: #f2555a;
+  --error-soft: rgba(242, 85, 90, 0.14);
+  --warn: #e8a94b;
+  --warn-soft: rgba(232, 169, 75, 0.14);
+  --ok: #4bd07f;
+  --ok-soft: rgba(75, 208, 127, 0.14);
+  --hint: #7aa2ff;
+
+  /* Syntax */
+  --syn-keyword: #c792ea;
+  --syn-func: #82aaff;
+  --syn-string: #c3e88d;
+  --syn-number: #f78c6c;
+  --syn-comment: #5f6b7e;
+  --syn-heading: #ffcb6b;
+  --syn-label: #33c2b0;
+  --syn-math: #f07178;
+  --syn-punct: #89ddff;
+
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --radius: 8px;
+  --radius-sm: 5px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #eceef2;
+  --bg-1: #f4f5f8;
+  --bg-2: #ffffff;
+  --bg-3: #f0f2f6;
+  --bg-4: #e4e8ef;
+  --bg-inset: #e7eaef;
+
+  --border: #d9dde5;
+  --border-strong: #c2c8d4;
+
+  --fg-0: #1b1f27;
+  --fg-1: #3d434f;
+  --fg-2: #6b7280;
+  --fg-3: #949cab;
+
+  --accent: #3b6fe0;
+  --accent-2: #12a594;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(59, 111, 224, 0.12);
+
+  --error: #d92b34;
+  --error-soft: rgba(217, 43, 52, 0.1);
+  --warn: #b7791f;
+  --warn-soft: rgba(183, 121, 31, 0.12);
+  --ok: #1a9c53;
+  --ok-soft: rgba(26, 156, 83, 0.12);
+  --hint: #2f6fed;
+
+  --syn-keyword: #8250df;
+  --syn-func: #0550ae;
+  --syn-string: #0a7d33;
+  --syn-number: #b5480d;
+  --syn-comment: #8a94a6;
+  --syn-heading: #9a6700;
+  --syn-label: #12a594;
+  --syn-math: #cf222e;
+  --syn-punct: #0550ae;
+
+  --shadow: 0 12px 34px rgba(30, 40, 70, 0.16), 0 2px 6px rgba(30, 40, 70, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-0);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-3);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input {
+  font-family: inherit;
+  color: inherit;
+}
+
+kbd {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  color: var(--fg-1);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+::selection {
+  background: var(--accent-soft);
+}

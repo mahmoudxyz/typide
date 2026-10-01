@@ -1,0 +1,8 @@
+[package]
+name = "typide-lsp"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Tinymist process management + LSP message bridge."
+
+[dependencies]

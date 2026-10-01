@@ -1,0 +1,9 @@
+[package]
+name = "typide-refs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Bibliography: .bib/.yml, Zotero local API."
+
+[dependencies]
+typide-net = { path = "../typide-net" }

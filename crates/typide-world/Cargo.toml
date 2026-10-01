@@ -1,0 +1,24 @@
+[package]
+name = "typide-world"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Typst World implementation (files, packages, fonts, time) + compile/preview."
+
+[dependencies]
+typst = "0.15.1"
+typst-layout = "0.15.1"
+typst-svg = "0.15.1"
+typst-pdf = "0.15.1"
+typst-ide = "0.15.1"
+typst-syntax = "0.15.1"
+typst-kit = { version = "0.15.1", default-features = false, features = [
+    "embedded-fonts",
+    "scan-fonts",
+    "system-files",
+    "system-packages",
+    "universe-packages",
+    "datetime",
+] }
+comemo = "0.4"
+serde = { version = "1", features = ["derive"] }

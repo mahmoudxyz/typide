@@ -1,0 +1,10 @@
+[package]
+name = "typide-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Workspace/project model, config, event bus, facade."
+
+[dependencies]
+typide-jobs = { path = "../typide-jobs" }
+typide-policy = { path = "../typide-policy" }

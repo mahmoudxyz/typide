@@ -1,0 +1,4 @@
+[toolchain]
+# Match Typst 0.15's MSRV (ARCHITECTURE.md §3).
+channel = "1.92"
+components = ["rustfmt", "clippy"]

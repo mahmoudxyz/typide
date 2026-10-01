@@ -1,0 +1,8 @@
+[package]
+name = "typide-index"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "SQLite index: symbols, labels, citations, notes (FTS5)."
+
+[dependencies]

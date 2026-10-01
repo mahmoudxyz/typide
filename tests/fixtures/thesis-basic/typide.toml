@@ -1,0 +1,27 @@
+[project]
+name = "thesis-basic"
+kind = "thesis"
+entrypoint = "main.typ"
+
+[toolchain]
+typst = "0.15.1"
+tinymist = "auto"
+
+[packages]
+mode = "vendor"
+vendor-dir = "vendor/packages"
+
+[fonts]
+use-system-fonts = true
+
+[references]
+files = ["refs.bib"]
+
+[[export]]
+name = "Submission PDF"
+format = "pdf"
+output = "out/thesis.pdf"
+pdf-standards = ["a-2a", "ua-1"]
+
+[check]
+profile = "thesis-submission"

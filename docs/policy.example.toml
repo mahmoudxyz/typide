@@ -1,0 +1,28 @@
+# Example institutional policy for Typide (ARCHITECTURE.md §8.5).
+#
+# Place this at the system location to enforce settings for all users on a
+# machine. Any key set here OVERRIDES user settings and is shown as *locked* in
+# the UI; security-relevant keys (network, updates, AI) can never be loosened by
+# a project's own files.
+#
+#   Linux:   /etc/typide/policy.toml
+#   macOS:   /Library/Application Support/typide/policy.toml
+#   Windows: %ProgramData%\typide\policy.toml
+#
+# For testing, point Typide at any file with the TYPIDE_POLICY_PATH env var.
+
+[network]
+# Enforced network mode: "offline" | "ask" | "online".
+mode = "offline"
+# When not offline, only these hosts are reachable.
+allow-hosts = ["mirror.uni.example"]
+
+[updates]
+# Disable the app updater entirely.
+enabled = false
+
+[ai]
+# Disable AI features (M6).
+enabled = false
+
+# [telemetry] is intentionally absent — Typide has no telemetry to configure.

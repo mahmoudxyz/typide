@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "xtask"]
+# app/src-tauri is excluded from the default build: it depends on Tauri, which
+# needs the system webview (webkit2gtk on Linux). It is built via `cargo tauri
+# dev/build` once the platform WebView libraries are installed. See ARCHITECTURE.md §8.
+exclude = ["app/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.92"
+repository = "https://github.com/typide/typide"
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,10 @@
+[package]
+name = "typide-check"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Inspections, quick-fixes, migrations, submission checker."
+
+[dependencies]
+typst-syntax = "0.15.1"
+serde = { version = "1", features = ["derive"] }
