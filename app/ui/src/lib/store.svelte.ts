@@ -997,12 +997,22 @@ export async function refreshTree() {
 /** The directory a new item should go in, given a selected node path. */
 function dirForTarget(path: string): string {
   const root = data.project?.root ?? "";
-  if (!path) return root;
+  const clean = (path ?? "").replace(/\/+$/, ""); // drop trailing slashes
+  if (!clean || clean === root) return root;
   // A folder node → itself; a file node → its parent.
-  const node = findNode(data.tree, path);
-  if (node?.kind === "dir") return path;
-  const slash = path.lastIndexOf("/");
-  return slash > 0 ? path.slice(0, slash) : root;
+  const node = findNode(data.tree, clean);
+  if (node?.kind === "dir") return clean;
+  const slash = clean.lastIndexOf("/");
+  return slash > root.length ? clean.slice(0, slash) : root;
+}
+
+/** Validate a user-entered file/folder name. Returns an error string or null. */
+function badName(name: string): string | null {
+  const n = name.trim();
+  if (!n) return "Name is required";
+  if (n === "." || n === "..") return "Invalid name";
+  if (/[\/\\]/.test(n)) return "Name can't contain slashes";
+  return null;
 }
 
 function findNode(n: FileNode | null, path: string): FileNode | null {
@@ -1063,6 +1073,8 @@ export function newFile(targetPath?: string) {
     value: uniqueName(dir, "untitled.typ"),
     confirmText: "Create",
     onConfirm: async (name) => {
+      const err = badName(name);
+      if (err) return showToast(err, "error");
       const path = `${dir}/${name.trim()}`;
       try {
         await api.fsCreateFile(path);
@@ -1084,6 +1096,8 @@ export function newFolder(targetPath?: string) {
     value: uniqueName(dir, "untitled"),
     confirmText: "Create",
     onConfirm: async (name) => {
+      const err = badName(name);
+      if (err) return showToast(err, "error");
       try {
         await api.fsCreateDir(`${dir}/${name.trim()}`);
         await refreshTree();
@@ -1103,6 +1117,8 @@ export function renameNode(path: string) {
     value: baseName(path),
     confirmText: "Rename",
     onConfirm: async (name) => {
+      const err = badName(name);
+      if (err) return showToast(err, "error");
       const to = `${dir}/${name.trim()}`;
       if (to === path) return;
       try {

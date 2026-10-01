@@ -706,6 +706,66 @@ fn fs_reveal(path: String) -> IpcResult<()> {
     Ok(())
 }
 
+/// Run a command line in the project directory and stream its output to the
+/// frontend via `terminal://output` / `terminal://exit` events.
+///
+/// This is a user-driven interactive terminal: the person types the command, so
+/// it runs through their shell. That is categorically different from the §20
+/// rule (which forbids *us* building argv from untrusted data) — here the user
+/// is the author of their own command in their own terminal.
+#[tauri::command]
+fn terminal_exec(app: AppHandle, root: String, line: String) -> IpcResult<()> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    let cwd = expand_tilde(&root);
+    let mut cmd = {
+        #[cfg(windows)]
+        {
+            let mut c = Command::new("cmd");
+            c.arg("/C").arg(&line);
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+            let mut c = Command::new(shell);
+            c.arg("-lc").arg(&line);
+            c
+        }
+    };
+    cmd.current_dir(&cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| IpcError::new("term.spawn", e.to_string()))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    std::thread::spawn(move || {
+        let emit = |stream: &str, text: String| {
+            let _ = app.emit(
+                "terminal://output",
+                serde_json::json!({ "stream": stream, "line": text }),
+            );
+        };
+        if let Some(out) = stdout {
+            for l in BufReader::new(out).lines().map_while(Result::ok) {
+                emit("out", l);
+            }
+        }
+        if let Some(err) = stderr {
+            for l in BufReader::new(err).lines().map_while(Result::ok) {
+                emit("err", l);
+            }
+        }
+        let code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
+        let _ = app.emit("terminal://exit", serde_json::json!({ "code": code }));
+    });
+    Ok(())
+}
+
 /// Minimal `%XX` percent-decoding for `file://` URIs (spaces etc.).
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
@@ -1570,6 +1630,7 @@ pub fn run() {
             fs_write_bytes,
             fs_import,
             fs_reveal,
+            terminal_exec,
             recovery_save,
             recovery_scan,
             recovery_read,

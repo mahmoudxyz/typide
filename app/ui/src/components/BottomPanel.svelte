@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import Terminal from "./Terminal.svelte";
   import { ui, data, openFile, relPath, cancelJob, type BottomTab } from "../lib/store.svelte";
 
   const errors = $derived(data.diagnostics.filter((d) => d.severity === "error").length);
@@ -91,12 +92,7 @@
         </div>
       {/each}
     {:else}
-      <div class="term mono">
-        <div><span class="p">typide {data.project?.root ?? "~"}</span> $ typst compile {data.project?.entrypoint ?? "main.typ"}</div>
-        <div class="dim">compiling {data.project?.entrypoint ?? "main.typ"} …</div>
-        <div class="ok">✓ ready · live compile + export land with the embedded compiler (M1)</div>
-        <div><span class="p">typide {data.project?.name ?? ""}</span> $ <span class="cur">▍</span></div>
-      </div>
+      <Terminal />
     {/if}
   </div>
 </section>
@@ -328,28 +324,5 @@
   .cancel:hover {
     background: var(--error-soft);
     color: var(--error);
-  }
-  .term {
-    padding: 10px 14px;
-    font-size: 12px;
-    line-height: 1.7;
-    color: var(--fg-1);
-  }
-  .term .p {
-    color: var(--accent-2);
-  }
-  .term .dim {
-    color: var(--fg-3);
-  }
-  .term .ok {
-    color: var(--ok);
-  }
-  .cur {
-    animation: blink 1s step-end infinite;
-  }
-  @keyframes blink {
-    50% {
-      opacity: 0;
-    }
   }
 </style>

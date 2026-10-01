@@ -549,4 +549,20 @@ export const api = {
     if (!isTauri()) return;
     return tauriInvoke<void>("fs_reveal", { path });
   },
+
+  /// Run a command line in `root`, streaming output via terminal:// events.
+  async terminalExec(root: string, line: string): Promise<void> {
+    if (!isTauri()) throw new Error("Terminal needs the desktop app");
+    return tauriInvoke<void>("terminal_exec", { root, line });
+  },
+  async onTerminalOutput(cb: (stream: string, line: string) => void): Promise<() => void> {
+    if (!isTauri()) return () => {};
+    return listen<{ stream: string; line: string }>("terminal://output", (e) =>
+      cb(e.payload.stream, e.payload.line)
+    );
+  },
+  async onTerminalExit(cb: (code: number) => void): Promise<() => void> {
+    if (!isTauri()) return () => {};
+    return listen<{ code: number }>("terminal://exit", (e) => cb(e.payload.code));
+  },
 };
